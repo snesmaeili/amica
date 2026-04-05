@@ -35,7 +35,7 @@ class AmicaConfig:
     maxrho : float
         Maximum value for shape parameter (2.0 = Gaussian). Default is 2.0.
     do_newton : bool
-        Whether to use Newton updates for faster convergence. Default is False.
+        Whether to use Newton updates for faster convergence. Default is True.
     newt_start : int
         Iteration to start Newton updates. Default is 50.
     newt_ramp : int
@@ -59,9 +59,9 @@ class AmicaConfig:
     rejsig : float
         Rejection threshold in standard deviations. Default is 3.0.
     rejstart : int
-        Iteration to start rejection. Default is 1.
+        Iteration to start rejection. Default is 2 (Klug et al. 2024).
     rejint : int
-        Interval between rejection passes. Default is 1.
+        Interval between rejection passes. Default is 3 (Klug et al. 2024).
     numrej : int
         Number of rejection passes per interval. Default is 5.
     min_dll : float
@@ -144,8 +144,8 @@ class AmicaConfig:
     # Rejection
     do_reject: bool = False
     rejsig: float = 3.0
-    rejstart: int = 1
-    rejint: int = 1
+    rejstart: int = 2
+    rejint: int = 3
     numrej: int = 5
     
     # Convergence

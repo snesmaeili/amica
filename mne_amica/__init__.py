@@ -17,7 +17,23 @@ References
 from .config import AmicaConfig
 from .solver import Amica, AmicaResult
 
-__all__ = ["Amica", "AmicaConfig", "AmicaResult", "amica"]
+__all__ = ["Amica", "AmicaConfig", "AmicaResult", "amica", "fit_ica"]
+
+
+def fit_ica(inst, n_components=None, max_iter=2000, num_mix=3,
+            random_state=None, picks=None, reject=None, flat=None,
+            decim=None, fit_params=None, verbose=None):
+    """Fit ICA using AMICA on MNE Raw or Epochs data.
+
+    See :func:`mne_amica.mne_integration.fit_ica` for full docs.
+    """
+    from .mne_integration import fit_ica as _fit_ica
+    return _fit_ica(
+        inst, n_components=n_components, max_iter=max_iter,
+        num_mix=num_mix, random_state=random_state, picks=picks,
+        reject=reject, flat=flat, decim=decim, fit_params=fit_params,
+        verbose=verbose,
+    )
 __version__ = "0.1.0"
 
 

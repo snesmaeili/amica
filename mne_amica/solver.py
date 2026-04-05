@@ -37,6 +37,7 @@ from .updates import (
     update_all_pdf_params,
     compute_newton_terms,
     apply_full_newton_correction,
+    update_model_centers,
 )
 from .likelihood import (
     compute_log_det_W,
@@ -99,51 +100,49 @@ def _amica_step(
     # 3. Compute Log-Likelihood
     ll = compute_total_loglikelihood(y, W, alpha, mu, beta, rho, log_det_sphere)
     
-    # Adaptive Learning Rate Logic
-    # If ll < ll_prev, reduce lrate
-    # We need to handle the first iteration where ll_prev might be -inf?
-    # Usually passed as very small number.
+    # Adaptive Learning Rate Logic (matching Fortran AMICA)
+    # `lrate` passed in is the BASE learning rate (not halved).
+    # Fortran internally uses lrate/2 for natural gradient,
+    # then ramps to newtrate over newt_ramp iters when Newton starts.
+    #
+    # The base lrate is decayed on LL decrease and returned unchanged
+    # for the outer loop to pass back next iteration.
     dll = ll - ll_prev
-    # logic: if iteration > 0 (handled by caller passing valid ll_prev) and dll < 0
-    # But iteration logic inside JIT:
-    lrate_eff = jnp.where(dll < 0.0, lrate * lratefact, lrate)
-    
-    # Also minimal lrate check
-    lrate_eff = jnp.maximum(lrate_eff, minlrate)
+    ll_decreased = (dll < 0.0) & (iteration > 1)
+    lrate_base = jnp.where(ll_decreased, lrate * lratefact, lrate)
+    lrate_base = jnp.maximum(lrate_base, minlrate)
+
+    # Compute effective step size (internal to this iteration only):
+    #   Before newt_start: lrate_eff = lrate_base / 2
+    #   During ramp (newt_start to newt_start+newt_ramp): linear from lrate_base/2 to newtrate
+    #   After ramp: lrate_eff = newtrate
+    newt_ramp = 10  # matches Fortran default
+    in_newton = do_newton & (iteration >= newt_start_iter)
+    ramp_progress = jnp.clip(
+        (iteration - newt_start_iter + 1.0) / newt_ramp, 0.0, 1.0
+    )
+    natgrad_lrate = lrate_base * 0.5
+    newton_lrate = natgrad_lrate + ramp_progress * (newtrate - natgrad_lrate)
+    lrate_step = jnp.where(in_newton, newton_lrate, natgrad_lrate)
 
     # 4. Natural Gradient on A (Fortran style)
-    # g * y^T
     gy = jnp.dot(g, y.T) / n_samples
     dA_local = jnp.eye(n_components) - gy
 
     # 5. Newton Correction
-    use_newton = do_newton & (iteration >= newt_start_iter)
-    
-    # Default update direction is just natural gradient
     Wtmp = dA_local
-    posdef = True
-    
-    # Newton computation
+
     def apply_newton(operands):
         y_, alpha_, mu_, beta_, rho_ = operands
         sigma2, kappa, lambda_ = compute_newton_terms(y_, alpha_, mu_, beta_, rho_)
-        
-        # Check lambda positivity (simple check)
         lambda_pos = jnp.all(lambda_ > 0)
-        
-        # Calculate update
         Wtmp_newt, posdef_newt = apply_full_newton_correction(
             dA_local, sigma2, kappa, lambda_
         )
-        
-        # Combine conditions
         is_valid = lambda_pos & posdef_newt
-        
-        # Return Newton update if valid, else fallback to dA_local
         return jnp.where(is_valid, Wtmp_newt, dA_local)
 
     if do_newton:
-        # Only check iteration condition dynamically
         Wtmp = jax.lax.cond(
             iteration >= newt_start_iter,
             apply_newton,
@@ -153,9 +152,9 @@ def _amica_step(
     else:
         Wtmp = dA_local
 
-    # 6. Update A using EFFECTIVE lrate
+    # 6. Update A using step-local lrate (halved natgrad or ramped Newton)
     dAk = A @ Wtmp
-    A_new = A - lrate_eff * dAk
+    A_new = A - lrate_step * dAk
     
     # Check for NaN/Inf
     is_good = jnp.all(jnp.isfinite(A_new))
@@ -215,7 +214,15 @@ def _amica_step(
         y, alpha, mu, beta, rho, pconfig, rholrate
     )
 
-    # 9. Scaling (Fortran doscaling)
+    # 9. Update model center c via reparameterization (Palmer tech report)
+    # c_new = posterior-weighted mean of x, then adjust mu to compensate
+    c_new = jnp.mean(data_white, axis=1)  # Single-model: uniform weighting
+    delta_c = c_new - c
+    # Adjust source means to compensate: mu -= W @ delta_c (per source per mix)
+    W_delta_c = jnp.dot(W_new, delta_c)  # (n_components,)
+    mu_new = mu_new - W_delta_c[None, :]  # Broadcast over n_mix
+
+    # 10. Scaling (Fortran doscaling)
     if doscaling:
         col_norms = jnp.linalg.norm(A_new, axis=0)
         col_norms = jnp.where(col_norms > 0.0, col_norms, 1.0)
@@ -224,14 +231,9 @@ def _amica_step(
         beta_new = beta_new / col_norms[None, :]
         W_new = jnp.linalg.pinv(A_new)
 
-    # Compute norm of change (for monitoring)
-    # dW is approx W_new - W (not exactly if A update logic was complex)
-    # But effectively dW ~ lrate * W * (I - gy)
-    dW_norm = 0.0 # Placeholder, computation might be expensive if not needed
-    
     return (
-        W_new, A_new, c, alpha_new, mu_new, beta_new, rho_new, gm, 
-        ll, is_good, lrate_eff
+        W_new, A_new, c_new, alpha_new, mu_new, beta_new, rho_new, gm,
+        ll, is_good, lrate_base
     )
 
 
@@ -437,9 +439,11 @@ class Amica:
         # If std > 0.5, assume uV or similar large unit and auto-scale.
         scaling_factor = 1.0
         data_std = np.std(data)
-        if data_std > 0.5:
-            print(f"AMICA: Data std ({data_std:.2f}) > 0.5. Assuming microvolts (uV) and scaling by 1e-6 to Volts for stability.")
-            scaling_factor = 1e-6
+        if data_std > 1e2:
+            # Very large values suggest microvolts or similar units.
+            # EEG in Volts: std ~ 1e-5 to 1e-4. In uV: std ~ 10 to 100.
+            scaling_factor = 1.0 / data_std
+            print(f"AMICA: Data std ({data_std:.2e}) very large. Auto-scaling by {scaling_factor:.2e} for stability.")
             data = data * scaling_factor
         
         n_channels, n_samples = data.shape
@@ -499,6 +503,10 @@ class Amica:
         
         # Initial ll_prev for first iteration
         ll_prev_val = -np.inf
+
+        # Sample rejection state
+        sample_mask = jnp.ones(n_samples, dtype=bool)  # True = keep
+        rej_count = 0  # Number of rejection passes done
         
         # Convert config flags to static arguments once
         do_newton_static = self.config.do_newton
@@ -567,6 +575,38 @@ class Amica:
             W, A, c, alpha, mu, beta, rho, gm = W_new, A_new, c_new, alpha_new, mu_new, beta_new, rho_new, gm_new
             LL.append(ll_val)
             
+            # ========== Sample Rejection ==========
+            if (self.config.do_reject
+                and iteration >= self.config.rejstart
+                and rej_count < self.config.numrej
+                and (iteration - self.config.rejstart) % self.config.rejint == 0):
+                # Compute per-sample LL
+                y_rej = jnp.dot(W, data_white - c[:, None])
+                sample_lls = compute_source_loglikelihood(y_rej, alpha, mu, beta, rho)
+                sample_lls = sample_lls + compute_log_det_W(W) + log_det_sphere
+
+                # Rejection threshold: mean - rejsig * std
+                ll_mean = jnp.mean(sample_lls)
+                ll_std = jnp.std(sample_lls)
+                threshold = ll_mean - self.config.rejsig * ll_std
+
+                new_mask = sample_lls >= threshold
+                n_rejected = int(jnp.sum(~new_mask))
+                max_reject = int(0.2 * n_samples)  # Cap at 20%
+
+                if n_rejected <= max_reject:
+                    sample_mask = new_mask
+                    rej_count += 1
+                    if iteration % 10 == 0:
+                        pct = 100.0 * n_rejected / n_samples
+                        print(f"  Iter {iteration}: Rejected {n_rejected} samples ({pct:.1f}%)")
+
+                    # Subset data to non-rejected samples
+                    mask_np = np.asarray(new_mask)
+                    kept_idx = np.where(mask_np)[0]
+                    data_white = jnp.asarray(np.asarray(data_white)[:, kept_idx])
+                    n_samples = data_white.shape[1]
+
             # Check convergence triggers based on lrate
             # The JIT step already applied lrate decay if ll declined.
             # We just need to track 'numdecs' for long-term scheduling.
