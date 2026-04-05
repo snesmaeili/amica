@@ -73,7 +73,8 @@ class AmicaConfig:
     max_incs : int
         Number of small LL increases before stopping. Default is 10.
     use_grad_norm : bool
-        Whether to use gradient norm for convergence. Default is True.
+        Reserved for future use. Gradient norm convergence is not yet
+        implemented in the solver. Default is False.
     use_min_dll : bool
         Whether to use min_dll for convergence. Default is True.
     invsigmax : float
@@ -151,7 +152,7 @@ class AmicaConfig:
     # Convergence
     min_dll: float = 1e-9
     min_grad_norm: float = 1e-6
-    use_grad_norm: bool = True
+    use_grad_norm: bool = False
     use_min_dll: bool = True
     max_decs: int = 3
     max_incs: int = 10
