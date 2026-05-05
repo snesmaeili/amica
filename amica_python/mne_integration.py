@@ -9,6 +9,7 @@ Usage
 >>> ica.plot_components()
 >>> ica.apply(raw)
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,9 +21,22 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_data(inst, picks):
-    """Extract (n_channels, n_samples) data array from Raw or Epochs."""
-    from mne.io import BaseRaw
+    """Extract (n_channels, n_samples) data array from Raw or Epochs.
+
+    Parameters
+    ----------
+    inst : mne.io.Raw | mne.Epochs
+        The MNE data object to extract data from.
+    picks : array-like of int
+        Indices of the channels to extract.
+
+    Returns
+    -------
+    data : np.ndarray, shape (n_channels, n_samples)
+        The extracted continuous data. Epochs are concatenated along the time axis.
+    """
     from mne.epochs import BaseEpochs
+    from mne.io import BaseRaw
 
     if isinstance(inst, BaseRaw):
         return inst.get_data(picks)
@@ -38,6 +52,20 @@ def _compute_pre_whitener(data, info, picks):
 
     This replicates what MNE does in ICA._pre_whiten when noise_cov=None:
     divide each channel by the std of channels of that type.
+
+    Parameters
+    ----------
+    data : np.ndarray, shape (n_channels, n_samples)
+        The data to compute the pre-whitener for.
+    info : mne.Info
+        The measurement info from the MNE object.
+    picks : array-like of int
+        Indices of the channels corresponding to the rows of `data`.
+
+    Returns
+    -------
+    pre_whitener : np.ndarray, shape (n_channels, 1)
+        The pre-whitening multiplier for each channel.
     """
     from mne import channel_type
 
@@ -58,18 +86,39 @@ def _compute_pre_whitener(data, info, picks):
 def _compute_pca(data, n_components):
     """Compute PCA on pre-whitened, centered data.
 
-    Returns pca_components, pca_mean, pca_explained_variance (all for
-    the full set of components, not truncated).
+    Computes a full SVD on the data and returns the principal components,
+    mean, and explained variance for the full set of components (not truncated).
+
+    Parameters
+    ----------
+    data : np.ndarray, shape (n_features, n_samples)
+        The input data (channels by time).
+    n_components : int | None
+        Target number of components. Included for API compatibility.
+
+    Returns
+    -------
+    pca_components : np.ndarray, shape (n_features, n_features)
+        The principal components (V^T from SVD).
+    pca_mean : np.ndarray, shape (n_features,)
+        The mean of the data across samples.
+    pca_explained_variance : np.ndarray, shape (n_features,)
+        The variance explained by each component.
     """
-    from sklearn.decomposition import PCA
+    import scipy.linalg
 
-    # PCA expects (n_samples, n_features)
-    pca = PCA(whiten=False)
-    pca.fit(data.T)
+    # data is (n_features, n_samples)
+    data = data.T  # (n_samples, n_features)
+    n_samples = data.shape[0]
 
-    pca_components = pca.components_  # (n_features, n_features)
-    pca_mean = pca.mean_              # (n_features,)
-    pca_explained_variance = pca.explained_variance_  # (n_features,)
+    pca_mean = np.mean(data, axis=0)
+    data_centered = data - pca_mean
+
+    # Compute full SVD. For PCA we need U, S, Vh
+    U, S, Vh = scipy.linalg.svd(data_centered, full_matrices=False)
+
+    pca_components = Vh  # (n_features, n_features)
+    pca_explained_variance = (S**2) / (n_samples - 1)
 
     return pca_components, pca_mean, pca_explained_variance
 
@@ -86,7 +135,6 @@ def fit_ica(
     decim=None,
     fit_params: Optional[dict] = None,
     verbose=None,
-    _use_infomax_shim: bool = False,
 ):
     """Fit ICA using AMICA on MNE Raw or Epochs data.
 
@@ -118,9 +166,6 @@ def fit_ica(
         Additional parameters passed to AmicaConfig.
     verbose : bool | None
         Verbosity.
-    _use_infomax_shim : bool
-        If True, fall back to the old approach of using a 1-iteration
-        Infomax fit to get MNE's whitening pipeline. Default False.
 
     Returns
     -------
@@ -137,10 +182,7 @@ def fit_ica(
     try:
         from mne.preprocessing import ICA
     except ImportError:
-        raise ImportError(
-            "MNE-Python is required for fit_ica(). "
-            "Install with: pip install mne"
-        )
+        raise ImportError("MNE-Python is required for fit_ica(). Install with: pip install mne")
 
     from amica_python import Amica, AmicaConfig
 
@@ -154,14 +196,6 @@ def fit_ica(
             f"Amica(config).fit(data) directly and access AmicaResult."
         )
 
-    if _use_infomax_shim:
-        return _fit_ica_infomax_shim(
-            inst, n_components=n_components, max_iter=max_iter,
-            num_mix=num_mix, random_state=random_state, picks=picks,
-            reject=reject, flat=flat, decim=decim, fit_params=fit_params,
-            verbose=verbose,
-        )
-
     # ================================================================
     # Direct MNE ICA construction (no throwaway Infomax)
     # ================================================================
@@ -170,8 +204,7 @@ def fit_ica(
     # Resolve picks using public MNE API
     if picks is None:
         # Default: all data channels (eeg, meg, etc.) excluding bads — same as MNE ICA
-        picks_idx = mne.pick_types(inst.info, meg=True, eeg=True, ref_meg=False,
-                                   exclude="bads")
+        picks_idx = mne.pick_types(inst.info, meg=True, eeg=True, ref_meg=False, exclude="bads")
     elif isinstance(picks, str):
         picks_idx = mne.pick_types(inst.info, **{picks: True}, exclude="bads")
     else:
@@ -179,14 +212,22 @@ def fit_ica(
 
     # Extract data, applying reject/flat if provided for Raw
     from mne.io import BaseRaw as _BaseRaw
-    from mne.epochs import BaseEpochs as _BaseEpochs
 
     if isinstance(inst, _BaseRaw) and (reject is not None or flat is not None):
         # Create fixed-length epochs to apply rejection (matches MNE ICA behavior)
         events = mne.make_fixed_length_events(inst, duration=1.0)
-        epochs = mne.Epochs(inst, events, tmin=0, tmax=1.0 - 1.0 / inst.info["sfreq"],
-                            picks=picks_idx, reject=reject, flat=flat,
-                            baseline=None, preload=True, verbose=verbose)
+        epochs = mne.Epochs(
+            inst,
+            events,
+            tmin=0,
+            tmax=1.0 - 1.0 / inst.info["sfreq"],
+            picks=picks_idx,
+            reject=reject,
+            flat=flat,
+            baseline=None,
+            preload=True,
+            verbose=verbose,
+        )
         raw_data = np.concatenate(epochs.get_data(), axis=-1)
         # picks_idx already applied inside Epochs
         raw_data = raw_data.reshape(len(picks_idx), -1) if raw_data.ndim == 3 else raw_data
@@ -203,7 +244,10 @@ def fit_ica(
 
     # Decimation
     if decim is not None and decim > 1:
-        raw_data = raw_data[:, ::decim]
+        import scipy.signal
+
+        logger.info("Decimating data by factor %d using FIR anti-aliasing filter.", decim)
+        raw_data = scipy.signal.decimate(raw_data, decim, axis=-1, ftype="fir")
         n_samples = raw_data.shape[1]
 
     # Step 1: Pre-whiten (per-channel-type std normalization)
@@ -211,9 +255,7 @@ def fit_ica(
     data_pre = raw_data / pre_whitener
 
     # Step 2: PCA
-    pca_components, pca_mean, pca_explained_variance = _compute_pca(
-        data_pre, n_comp
-    )
+    pca_components, pca_mean, pca_explained_variance = _compute_pca(data_pre, n_comp)
 
     # Step 3: Project to PCA space (truncated to n_components)
     data_centered = data_pre - pca_mean[:, None]
@@ -231,7 +273,6 @@ def fit_ica(
         num_mix_comps=num_mix,
         do_sphere=False,
         do_mean=False,
-        lrate=0.02,
     )
     if fit_params:
         cfg_kwargs.update(fit_params)
@@ -287,86 +328,6 @@ def fit_ica(
         pass
 
     # Attach full AMICA result for viz module
-    ica.amica_result_ = result
-
-    return ica
-
-
-def _fit_ica_infomax_shim(
-    inst, n_components=None, max_iter=2000, num_mix=3,
-    random_state=None, picks=None, reject=None, flat=None,
-    decim=None, fit_params=None, verbose=None,
-):
-    """Legacy path: use 1-iteration Infomax to get MNE's whitening pipeline.
-
-    Kept as escape hatch via ``_use_infomax_shim=True``. The throwaway
-    Infomax fit is discarded — only the whitening/PCA is kept.
-    """
-    import warnings
-    from mne.preprocessing import ICA
-    from amica_python import Amica, AmicaConfig
-
-    ica = ICA(
-        n_components=n_components,
-        method="infomax",
-        random_state=random_state,
-        max_iter=1,
-    )
-
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message=".*n_components.*unstable.*")
-        warnings.filterwarnings("ignore", message=".*convergence.*")
-        ica.fit(
-            inst, picks=picks, reject=reject, flat=flat,
-            decim=decim, verbose=verbose,
-        )
-
-    from mne.io import BaseRaw
-    from mne.epochs import BaseEpochs
-
-    if isinstance(inst, BaseRaw):
-        ch_picks = ica._get_picks(inst)
-        raw_data = inst.get_data(ch_picks)
-    else:
-        raw_data = np.concatenate(
-            [inst[i].get_data() for i in range(len(inst))], axis=-1
-        )
-        ch_picks = ica._get_picks(inst)
-        raw_data = raw_data[ch_picks]
-
-    data_pre = ica._pre_whiten(raw_data)
-    if ica.pca_mean_ is not None:
-        data_pre -= ica.pca_mean_[:, None]
-    pca_data = np.dot(ica.pca_components_[:ica.n_components_], data_pre)
-
-    comp_stds = np.std(pca_data, axis=1, keepdims=True)
-    comp_stds[comp_stds == 0] = 1.0
-    data_for_amica = pca_data / comp_stds
-
-    cfg_kwargs = dict(
-        max_iter=max_iter,
-        num_mix_comps=num_mix,
-        do_sphere=False,
-        do_mean=False,
-        lrate=0.02,
-    )
-    if fit_params:
-        cfg_kwargs.update(fit_params)
-    config = AmicaConfig(**cfg_kwargs)
-
-    solver = Amica(config, random_state=random_state)
-    result = solver.fit(data_for_amica)
-
-    W = result.unmixing_matrix_white_
-    W_corrected = W / comp_stds.squeeze()[np.newaxis, :]
-
-    norms = np.sqrt(ica.pca_explained_variance_[:ica.n_components_])
-    norms[norms == 0] = 1.0
-
-    ica.unmixing_matrix_ = W_corrected / norms
-    ica.n_iter_ = result.n_iter
-    ica.mixing_matrix_ = np.linalg.pinv(ica.unmixing_matrix_)
-    ica.method = "amica"
     ica.amica_result_ = result
 
     return ica

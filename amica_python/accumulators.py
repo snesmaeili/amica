@@ -13,6 +13,7 @@ This module provides the chunk-level accumulator. The outer loop in
 solver.py sums the accumulators across chunks and hands the totals to
 the M-step.
 """
+
 from __future__ import annotations
 
 from typing import NamedTuple
@@ -20,7 +21,7 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
-from .likelihood import compute_source_loglikelihood, compute_log_det_W
+from .likelihood import compute_log_det_W, compute_source_loglikelihood
 from .pdf import compute_responsibilities
 
 
@@ -32,37 +33,58 @@ class ChunkStats(NamedTuple):
 
     Shapes reference n_comp = number of components, n_mix = num_mix_comps.
     """
-    gy_partial: jnp.ndarray        # (n_comp, n_comp)  = g_chunk @ y_chunk.T
-    sigma2_partial: jnp.ndarray    # (n_comp,)         = sum(y^2, axis=time)
-    data_sum: jnp.ndarray          # (n_comp,)         = sum(data_white_chunk, axis=time) [for c update]
 
-    resp_sum: jnp.ndarray          # (n_mix, n_comp)   = sum(resp, axis=time) [for alpha]
+    gy_partial: jnp.ndarray  # (n_comp, n_comp)  = g_chunk @ y_chunk.T
+    sigma2_partial: jnp.ndarray  # (n_comp,)         = sum(y^2, axis=time)
+    data_sum: jnp.ndarray  # (n_comp,)         = sum(data_white_chunk, axis=time) [for c update]
 
-    mu_numer: jnp.ndarray          # (n_mix, n_comp)   = sum(u*fp)
-    mu_denom_le2: jnp.ndarray      # (n_mix, n_comp)   = sum(u*fp / y_scaled)    [for rho <= 2.0]
-    mu_denom_gt2: jnp.ndarray      # (n_mix, n_comp)   = sum(u*fp * fp)          [for rho > 2.0]
+    resp_sum: jnp.ndarray  # (n_mix, n_comp)   = sum(resp, axis=time) [for alpha]
 
-    beta_denom_le2: jnp.ndarray    # (n_mix, n_comp)   = sum(u*fp * y_scaled)    [for rho <= 2.0]
-    beta_denom_gt2: jnp.ndarray    # (n_mix, n_comp)   = sum(u * |y_scaled|^rho) [for rho > 2.0]
+    mu_numer: jnp.ndarray  # (n_mix, n_comp)   = sum(u*fp)
+    mu_denom_le2: jnp.ndarray  # (n_mix, n_comp)   = sum(u*fp / y_scaled)    [for rho <= 2.0]
+    mu_denom_gt2: jnp.ndarray  # (n_mix, n_comp)   = sum(u*fp * fp)          [for rho > 2.0]
 
-    rho_numer: jnp.ndarray         # (n_mix, n_comp)   = sum(u * |y|^rho * rho*log|y|)
+    beta_denom_le2: jnp.ndarray  # (n_mix, n_comp)   = sum(u*fp * y_scaled)    [for rho <= 2.0]
+    beta_denom_gt2: jnp.ndarray  # (n_mix, n_comp)   = sum(u * |y_scaled|^rho) [for rho > 2.0]
 
-    kappa_numer: jnp.ndarray       # (n_mix, n_comp)   = sum(u * fp^2)
-    lambda_numer: jnp.ndarray      # (n_mix, n_comp)   = sum(u * (fp*y_scaled - 1)^2)
+    rho_numer: jnp.ndarray  # (n_mix, n_comp)   = sum(u * |y|^rho * rho*log|y|)
 
-    ll_sum: jnp.ndarray            # scalar            = sum of per-sample source_ll
-    n_chunk: jnp.ndarray           # scalar            = y_chunk.shape[1]
+    kappa_numer: jnp.ndarray  # (n_mix, n_comp)   = sum(u * fp^2)
+    lambda_numer: jnp.ndarray  # (n_mix, n_comp)   = sum(u * (fp*y_scaled - 1)^2)
+
+    ll_sum: jnp.ndarray  # scalar            = sum of per-sample source_ll
+    n_chunk: jnp.ndarray  # scalar            = y_chunk.shape[1]
 
 
 @jax.jit
 def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho):
     """Compute per-component partial stats for one chunk.
 
-    Returns a tuple of (n_mix,)-shaped arrays for one component i.
     The outer caller vmaps this over components.
+
+    Parameters
+    ----------
+    i : int or jnp.ndarray
+        Component index.
+    y_chunk : jnp.ndarray, shape (n_comp, n_chunk)
+        Source activations for the current chunk.
+    alpha : jnp.ndarray, shape (n_mix, n_comp)
+        Mixture weights.
+    mu : jnp.ndarray, shape (n_mix, n_comp)
+        Mixture centers.
+    beta : jnp.ndarray, shape (n_mix, n_comp)
+        Mixture scales.
+    rho : jnp.ndarray, shape (n_mix, n_comp)
+        Mixture shape parameters.
+
+    Returns
+    -------
+    stats : tuple
+        A tuple of 9 arrays, each with shape (n_mix,), representing the
+        accumulated sufficient statistics for component i.
     """
-    y_i = y_chunk[i]                      # (n_chunk,)
-    alpha_i = alpha[:, i]                 # (n_mix,)
+    y_i = y_chunk[i]  # (n_chunk,)
+    alpha_i = alpha[:, i]  # (n_mix,)
     mu_i = mu[:, i]
     beta_i = beta[:, i]
     rho_i = rho[:, i]
@@ -73,12 +95,12 @@ def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho):
     n_mix = alpha_i.shape[0]
 
     def per_mix(j):
-        u = resp[j]                       # (n_chunk,)
+        u = resp[j]  # (n_chunk,)
         m = mu_i[j]
         b = beta_i[j]
         r = rho_i[j]
 
-        y_scaled = b * (y_i - m)          # (n_chunk,)
+        y_scaled = b * (y_i - m)  # (n_chunk,)
         abs_y = jnp.abs(y_scaled)
         sign_y = jnp.where(y_scaled >= 0.0, 1.0, -1.0)
         fp = r * sign_y * jnp.power(abs_y, r - 1.0)
@@ -99,7 +121,7 @@ def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho):
         # rho numer (denom is u_sum)
         safe_abs = jnp.maximum(abs_y, 1e-300)
         log_abs = jnp.log(safe_abs)
-        tmpy = jnp.exp(r * log_abs)       # |y|^rho
+        tmpy = jnp.exp(r * log_abs)  # |y|^rho
         logab = r * log_abs
         rho_n = jnp.sum(u * tmpy * logab)
 
@@ -108,9 +130,7 @@ def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho):
         lambda_tmp = fp * y_scaled - 1.0
         lambda_n = jnp.sum(u * lambda_tmp * lambda_tmp)
 
-        return (u_sum, mu_n, mu_d_le2, mu_d_gt2,
-                beta_d_le2, beta_d_gt2, rho_n,
-                kappa_n, lambda_n)
+        return (u_sum, mu_n, mu_d_le2, mu_d_gt2, beta_d_le2, beta_d_gt2, rho_n, kappa_n, lambda_n)
 
     outs = jax.vmap(per_mix)(jnp.arange(n_mix))
     return outs  # tuple of 9 arrays, each (n_mix,)
@@ -118,60 +138,67 @@ def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho):
 
 @jax.jit
 def compute_chunk_stats(
-    data_chunk: jnp.ndarray,       # (n_comp, n_chunk) - pre-centered (data - c)
-    W: jnp.ndarray,                # (n_comp, n_comp)
-    alpha: jnp.ndarray,            # (n_mix, n_comp)
-    mu: jnp.ndarray,               # (n_mix, n_comp)
-    beta: jnp.ndarray,             # (n_mix, n_comp)
-    rho: jnp.ndarray,              # (n_mix, n_comp)
+    data_chunk: jnp.ndarray,
+    W: jnp.ndarray,
+    alpha: jnp.ndarray,
+    mu: jnp.ndarray,
+    beta: jnp.ndarray,
+    rho: jnp.ndarray,
     log_det_sphere: float,
 ) -> ChunkStats:
     """Compute all sufficient statistics for one time-chunk.
 
     Parameters
     ----------
-    data_chunk : (n_comp, n_chunk) — the chunk slice of (data_white - c).
-        The caller subtracts c; this avoids keeping it as separate argument.
-    W, alpha, mu, beta, rho : current model parameters.
-    log_det_sphere : scalar, added to per-sample LL.
+    data_chunk : jnp.ndarray, shape (n_comp, n_chunk)
+        The pre-centered chunk slice of data (data_white - c).
+    W : jnp.ndarray, shape (n_comp, n_comp)
+        Unmixing matrix.
+    alpha : jnp.ndarray, shape (n_mix, n_comp)
+        Mixture weights.
+    mu : jnp.ndarray, shape (n_mix, n_comp)
+        Mixture centers.
+    beta : jnp.ndarray, shape (n_mix, n_comp)
+        Mixture scales.
+    rho : jnp.ndarray, shape (n_mix, n_comp)
+        Mixture shape parameters.
+    log_det_sphere : float
+        Log determinant of the sphering matrix, added to per-sample LL.
 
     Returns
     -------
-    ChunkStats with all partial sums (not divided by n).
+    stats : ChunkStats
+        Sufficient statistics with all partial sums (not divided by n).
     """
     n_comp = W.shape[0]
     n_chunk = data_chunk.shape[1]
-    n_mix = alpha.shape[0]
 
     # Sources
-    y = jnp.dot(W, data_chunk)            # (n_comp, n_chunk)
+    y = jnp.dot(W, data_chunk)  # (n_comp, n_chunk)
 
     # Compute score function g = sum_j beta_j * resp_j * fp_j per component
     # Reuse the existing compute_all_scores to keep score semantics identical.
     from .pdf import compute_all_scores
-    g = compute_all_scores(y, alpha, mu, beta, rho)     # (n_comp, n_chunk)
+
+    g = compute_all_scores(y, alpha, mu, beta, rho)  # (n_comp, n_chunk)
 
     # Natural-gradient numerator (sum over time — NOT mean yet)
-    gy_partial = jnp.dot(g, y.T)          # (n_comp, n_comp)
+    gy_partial = jnp.dot(g, y.T)  # (n_comp, n_comp)
 
     # sigma2 partial (sum of y^2 over time)
     sigma2_partial = jnp.sum(y * y, axis=1)  # (n_comp,)
 
-    # data sum for c update (sum of data_chunk over time)
-    # data_chunk here is (data_white - c); we need sum(data_white, axis=time).
-    # We'll pass in data_white directly to avoid re-adding c. So caller must
-    # pass data_white_chunk (not centered). Fix: we handle this in solver.py
-    # by tracking data sum separately in the outer loop.
-    data_sum = jnp.sum(data_chunk, axis=1)    # placeholder; caller provides true data_white sum
+    # data sum for c update (placeholder; true data_white sum is tracked in solver.py)
+    data_sum = jnp.sum(data_chunk, axis=1)
 
     # Per-component, per-mixture sufficient statistics
-    comp_outs = jax.vmap(
-        lambda i: _chunk_stats_one_component(i, y, alpha, mu, beta, rho)
-    )(jnp.arange(n_comp))
-    # comp_outs is tuple of 9 arrays, each (n_comp, n_mix) — we need (n_mix, n_comp)
-    (u_sum, mu_n, mu_d_le2, mu_d_gt2,
-     beta_d_le2, beta_d_gt2, rho_n,
-     kappa_n, lambda_n) = [a.T for a in comp_outs]  # each (n_mix, n_comp)
+    comp_outs = jax.vmap(lambda i: _chunk_stats_one_component(i, y, alpha, mu, beta, rho))(
+        jnp.arange(n_comp)
+    )
+    # Transpose sufficient statistics from (n_comp, n_mix) to (n_mix, n_comp)
+    (u_sum, mu_n, mu_d_le2, mu_d_gt2, beta_d_le2, beta_d_gt2, rho_n, kappa_n, lambda_n) = [
+        a.T for a in comp_outs
+    ]
 
     # Per-sample log-likelihood sum
     source_ll = compute_source_loglikelihood(y, alpha, mu, beta, rho)  # (n_chunk,)
@@ -198,7 +225,22 @@ def compute_chunk_stats(
 
 
 def zero_stats(n_comp: int, n_mix: int, dtype=jnp.float64) -> ChunkStats:
-    """Zero-initialized accumulator matching the ChunkStats shapes."""
+    """Zero-initialized accumulator matching the ChunkStats shapes.
+
+    Parameters
+    ----------
+    n_comp : int
+        Number of components.
+    n_mix : int
+        Number of mixture components.
+    dtype : jnp.dtype, optional
+        Data type for the arrays. Default is jnp.float64.
+
+    Returns
+    -------
+    stats : ChunkStats
+        Zero-initialized chunk statistics.
+    """
     z_cc = jnp.zeros((n_comp, n_comp), dtype=dtype)
     z_c = jnp.zeros((n_comp,), dtype=dtype)
     z_mc = jnp.zeros((n_mix, n_comp), dtype=dtype)
@@ -222,7 +264,18 @@ def zero_stats(n_comp: int, n_mix: int, dtype=jnp.float64) -> ChunkStats:
 
 
 def add_stats(a: ChunkStats, b: ChunkStats) -> ChunkStats:
-    """Element-wise sum of two ChunkStats (for accumulating across chunks)."""
-    return ChunkStats(*(
-        getattr(a, f) + getattr(b, f) for f in ChunkStats._fields
-    ))
+    """Element-wise sum of two ChunkStats (for accumulating across chunks).
+
+    Parameters
+    ----------
+    a : ChunkStats
+        First chunk statistics.
+    b : ChunkStats
+        Second chunk statistics.
+
+    Returns
+    -------
+    stats : ChunkStats
+        The element-wise sum of `a` and `b`.
+    """
+    return ChunkStats(*(getattr(a, f) + getattr(b, f) for f in ChunkStats._fields))

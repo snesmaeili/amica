@@ -5,9 +5,8 @@ and cannot be obtained from MNE's standard ICA plotting routines.
 
 All functions return matplotlib Figure objects for easy customization.
 """
-from __future__ import annotations
 
-from typing import Optional, Sequence, Union
+from __future__ import annotations
 
 import numpy as np
 
@@ -17,9 +16,7 @@ def _check_result(result):
     required = ("alpha_", "mu_", "sbeta_", "rho_", "log_likelihood")
     for attr in required:
         if not hasattr(result, attr):
-            raise TypeError(
-                f"Expected an AmicaResult object, missing attribute '{attr}'"
-            )
+            raise TypeError(f"Expected an AmicaResult object, missing attribute '{attr}'")
 
 
 def plot_convergence(result, ax=None, show=True):
@@ -74,8 +71,7 @@ def plot_convergence(result, ax=None, show=True):
     return fig
 
 
-def plot_source_densities(result, picks=None, data=None, n_bins=100,
-                          n_cols=4, show=True):
+def plot_source_densities(result, picks=None, data=None, n_bins=100, n_cols=4, show=True):
     """Plot fitted generalized Gaussian mixture densities for each IC.
 
     For each selected component, overlays the fitted mixture PDF on top of
@@ -151,8 +147,7 @@ def plot_source_densities(result, picks=None, data=None, n_bins=100,
 
         # Plot histogram if sources available
         if y_i is not None:
-            ax.hist(y_i, bins=n_bins, density=True, alpha=0.3, color="C0",
-                    edgecolor="none")
+            ax.hist(y_i, bins=n_bins, density=True, alpha=0.3, color="C0", edgecolor="none")
 
         # Plot each mixture component and the total
         total_pdf = np.zeros_like(x)
@@ -164,8 +159,7 @@ def plot_source_densities(result, picks=None, data=None, n_bins=100,
 
             # Generalized Gaussian PDF
             y_scaled = b_j * (x - mu_j)
-            log_norm = (np.log(max(b_j, 1e-300))
-                        - gammaln(1.0 + 1.0 / r_j) - np.log(2.0))
+            log_norm = np.log(max(b_j, 1e-300)) - gammaln(1.0 + 1.0 / r_j) - np.log(2.0)
             log_pdf = log_norm - np.abs(y_scaled) ** r_j
             pdf_j = np.exp(log_pdf)
 
@@ -173,11 +167,18 @@ def plot_source_densities(result, picks=None, data=None, n_bins=100,
             total_pdf += component_pdf
 
             if n_mix > 1:
-                ax.plot(x, component_pdf, "--", alpha=0.5, linewidth=0.8,
-                        label=f"mix {j}" if idx == 0 else None)
+                ax.plot(
+                    x,
+                    component_pdf,
+                    "--",
+                    alpha=0.5,
+                    linewidth=0.8,
+                    label=f"mix {j}" if idx == 0 else None,
+                )
 
         ax.plot(x, total_pdf, color="C1", linewidth=1.5)
-        ax.set_title(f"IC {comp_i} (rho={rho[0, comp_i]:.2f})", fontsize=9)
+        dom_mix = np.argmax(alpha[:, comp_i])
+        ax.set_title(f"IC {comp_i} (rho={rho[dom_mix, comp_i]:.2f})", fontsize=9)
         ax.set_yticks([])
 
     # Hide unused axes
@@ -222,8 +223,7 @@ def plot_model_responsibilities(result, data, ax=None, show=True):
 
     if n_models < 2:
         raise ValueError(
-            "plot_model_responsibilities requires num_models >= 2. "
-            "This result has a single model."
+            "plot_model_responsibilities requires num_models >= 2. This result has a single model."
         )
 
     # Compute source activations for each model and model log-likelihoods
@@ -248,26 +248,22 @@ def plot_model_responsibilities(result, data, ax=None, show=True):
     for h in range(n_models):
         W_h = W_all[h]
         y_h = W_h @ (whitened - c_all[h][:, None])
-        n_comp = y_h.shape[0]
 
         # log|det(W)|
         _, logdet = np.linalg.slogdet(W_h)
 
-        # Source log-likelihoods
-        source_ll = np.zeros(n_samples)
-        for i in range(n_comp):
-            # Mixture log-likelihood for component i
-            log_pdfs = np.zeros((alpha_all.shape[1], n_samples))
-            for j in range(alpha_all.shape[1]):
-                a = alpha_all[h, j, i]
-                m = mu_all[h, j, i]
-                b = beta_all[h, j, i]
-                r = rho_all[h, j, i]
-                y_sc = b * (y_h[i] - m)
-                log_norm = (np.log(max(b, 1e-300))
-                            - gammaln(1.0 + 1.0 / r) - np.log(2.0))
-                log_pdfs[j] = np.log(max(a, 1e-300)) + log_norm - np.abs(y_sc) ** r
-            source_ll += logsumexp(log_pdfs, axis=0)
+        # Vectorized log-likelihood computation
+        a_h = np.maximum(alpha_all[h], 1e-300)
+        m_h = mu_all[h]
+        b_h = np.maximum(beta_all[h], 1e-300)
+        r_h = rho_all[h]
+
+        y_sc = b_h[:, :, None] * (y_h[None, :, :] - m_h[:, :, None])
+        log_norm = np.log(b_h) - gammaln(1.0 + 1.0 / r_h) - np.log(2.0)
+
+        log_pdfs = np.log(a_h)[:, :, None] + log_norm[:, :, None] - np.abs(y_sc) ** r_h[:, :, None]
+        comp_ll = logsumexp(log_pdfs, axis=0)
+        source_ll = np.sum(comp_ll, axis=0)
 
         model_lls[h] = source_ll + logdet
 
@@ -282,9 +278,7 @@ def plot_model_responsibilities(result, data, ax=None, show=True):
         fig = ax.figure
 
     times = np.arange(n_samples)
-    ax.stackplot(times, responsibilities,
-                 labels=[f"Model {h}" for h in range(n_models)],
-                 alpha=0.8)
+    ax.stackplot(times, responsibilities, labels=[f"Model {h}" for h in range(n_models)], alpha=0.8)
     ax.set_xlabel("Sample")
     ax.set_ylabel("Responsibility")
     ax.set_title("Model Responsibilities Over Time")
@@ -334,8 +328,15 @@ def plot_mixture_weights(result, ax=None, show=True):
     colors = plt.cm.Set2(np.linspace(0, 1, n_mix))
 
     for j in range(n_mix):
-        ax.bar(x, alpha[j], bottom=bottom, color=colors[j],
-               label=f"Mix {j}", edgecolor="white", linewidth=0.5)
+        ax.bar(
+            x,
+            alpha[j],
+            bottom=bottom,
+            color=colors[j],
+            label=f"Mix {j}",
+            edgecolor="white",
+            linewidth=0.5,
+        )
         bottom += alpha[j]
 
     ax.set_xlabel("Component")
@@ -390,17 +391,22 @@ def plot_shape_parameters(result, ax=None, show=True):
     colors = plt.cm.Set1(np.linspace(0, 0.5, n_mix))
     for j in range(n_mix):
         offset = (j - (n_mix - 1) / 2) * 0.15
-        ax.scatter(x + offset, rho[j], color=colors[j], s=40, zorder=3,
-                   label=f"Mix {j}" if n_mix > 1 else None,
-                   edgecolors="black", linewidth=0.5)
+        ax.scatter(
+            x + offset,
+            rho[j],
+            color=colors[j],
+            s=40,
+            zorder=3,
+            label=f"Mix {j}" if n_mix > 1 else None,
+            edgecolors="black",
+            linewidth=0.5,
+        )
 
     # Reference lines
     ax.axhline(1.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.7)
     ax.axhline(2.0, color="gray", linestyle="--", linewidth=0.8, alpha=0.7)
-    ax.text(n_comp - 0.5, 1.02, "Laplacian", fontsize=8, color="gray",
-            ha="right")
-    ax.text(n_comp - 0.5, 2.02, "Gaussian", fontsize=8, color="gray",
-            ha="right")
+    ax.text(n_comp - 0.5, 1.02, "Laplacian", fontsize=8, color="gray", ha="right")
+    ax.text(n_comp - 0.5, 2.02, "Gaussian", fontsize=8, color="gray", ha="right")
 
     ax.set_xlabel("Component")
     ax.set_ylabel("Shape parameter (rho)")
@@ -495,12 +501,10 @@ def plot_parameter_summary(result, data=None, show=True):
             b_j = beta[j, comp_i]
             r_j = rho[j, comp_i]
             y_sc = b_j * (x - mu_j)
-            log_norm = (np.log(max(b_j, 1e-300))
-                        - gammaln(1.0 + 1.0 / r_j) - np.log(2.0))
+            log_norm = np.log(max(b_j, 1e-300)) - gammaln(1.0 + 1.0 / r_j) - np.log(2.0)
             total_pdf += a_j * np.exp(log_norm - np.abs(y_sc) ** r_j)
 
-        ax4.plot(x, total_pdf, color=colors_ic[comp_i], linewidth=1.2,
-                 label=f"IC {comp_i}")
+        ax4.plot(x, total_pdf, color=colors_ic[comp_i], linewidth=1.2, label=f"IC {comp_i}")
 
     ax4.set_title("Source Density Models (first 4 ICs)")
     ax4.set_ylabel("Density")
@@ -533,6 +537,7 @@ def plot_component_metrics(result, data=None, picks=None, show=True):
     fig : matplotlib.figure.Figure
     """
     import matplotlib.pyplot as plt
+
     from . import metrics as m
 
     n_comp = result.unmixing_matrix_white_.shape[0]
@@ -545,8 +550,9 @@ def plot_component_metrics(result, data=None, picks=None, show=True):
     multimodal = m.multimodality_flag(result)[picks]
 
     n_rows = 3 if data is None else 4
-    fig, axes = plt.subplots(n_rows, 1, figsize=(max(6, len(picks) * 0.4), 2.5 * n_rows),
-                             sharex=True)
+    fig, axes = plt.subplots(
+        n_rows, 1, figsize=(max(6, len(picks) * 0.4), 2.5 * n_rows), sharex=True
+    )
 
     x = np.arange(len(picks))
     labels = [f"IC{i}" for i in picks]
@@ -566,8 +572,7 @@ def plot_component_metrics(result, data=None, picks=None, show=True):
     axes[1].set_title("Mixture Weight Entropy")
 
     # Multimodality
-    axes[2].bar(x, multimodal.astype(float), color="#ff7f0e",
-                edgecolor="k", linewidth=0.5)
+    axes[2].bar(x, multimodal.astype(float), color="#ff7f0e", edgecolor="k", linewidth=0.5)
     axes[2].set_ylabel("Multimodal")
     axes[2].set_yticks([0, 1])
     axes[2].set_yticklabels(["No", "Yes"])
@@ -580,8 +585,7 @@ def plot_component_metrics(result, data=None, picks=None, show=True):
         axes[3].set_title("Source Kurtosis")
 
     axes[-1].set_xticks(x)
-    axes[-1].set_xticklabels(labels, rotation=45 if len(picks) > 10 else 0,
-                             fontsize=8)
+    axes[-1].set_xticklabels(labels, rotation=45 if len(picks) > 10 else 0, fontsize=8)
     axes[-1].set_xlabel("Component")
 
     fig.suptitle("AMICA Component Metrics", fontsize=14, fontweight="bold")

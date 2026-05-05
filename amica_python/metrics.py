@@ -3,6 +3,7 @@
 These functions extract statistics from AMICA's generalized Gaussian
 mixture parameters that are not available from standard ICA methods.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -49,7 +50,7 @@ def rho_range(result: AmicaResult) -> np.ndarray:
     rho = np.asarray(result.rho_)
     if rho.ndim == 3:
         rho = rho[0]
-    return np.ptp(rho, axis=0)
+    return np.max(rho, axis=0) - np.min(rho, axis=0)
 
 
 def mixture_entropy(result: AmicaResult) -> np.ndarray:
@@ -75,9 +76,7 @@ def mixture_entropy(result: AmicaResult) -> np.ndarray:
     return -np.sum(alpha_safe * np.log(alpha_safe), axis=0)
 
 
-def multimodality_flag(
-    result: AmicaResult, threshold: float = 0.5
-) -> np.ndarray:
+def multimodality_flag(result: AmicaResult, threshold: float = 0.5) -> np.ndarray:
     """Flag components whose source density is likely multimodal.
 
     A component is flagged if its mixture entropy exceeds ``threshold``
@@ -93,6 +92,7 @@ def multimodality_flag(
     Returns
     -------
     is_multimodal : ndarray, shape (n_components,), dtype=bool
+        Boolean array indicating whether each component is multimodal.
     """
     alpha = np.asarray(result.alpha_)
     if alpha.ndim == 3:
@@ -120,7 +120,7 @@ def source_kurtosis(result: AmicaResult, data: np.ndarray) -> np.ndarray:
     """
     from scipy.stats import kurtosis as _kurt
 
-    data = np.asarray(data, dtype=np.float64)
+    data = np.asarray(data, dtype=np.float64) * result.data_scale
     centered = data - result.mean_[:, None]
     whitened = result.whitener_ @ centered
     sources = result.unmixing_matrix_white_ @ whitened

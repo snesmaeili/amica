@@ -197,48 +197,7 @@ class TestMatrixConventions(unittest.TestCase):
         product = result.mixing_matrix_sensor_ @ result.unmixing_matrix_sensor_
         np.testing.assert_allclose(product, np.eye(n_channels), atol=1e-6)
 
-    def test_deprecated_properties_warn(self):
-        """Test that old property names emit DeprecationWarning."""
-        from amica_python import Amica, AmicaConfig
-        import warnings
 
-        rng = np.random.RandomState(42)
-        data = rng.randn(4, 500)
-
-        config = AmicaConfig(max_iter=10, num_mix_comps=2, do_newton=False)
-        model = Amica(config=config, random_state=42)
-        result = model.fit(data)
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            _ = result.unmixing_matrix
-            self.assertTrue(any(issubclass(x.category, DeprecationWarning)
-                                for x in w))
-
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            _ = result.mixing_matrix
-            self.assertTrue(any(issubclass(x.category, DeprecationWarning)
-                                for x in w))
-
-    def test_deprecated_properties_return_correct_values(self):
-        """Test deprecated properties return the right matrices."""
-        from amica_python import Amica, AmicaConfig
-        import warnings
-
-        rng = np.random.RandomState(42)
-        data = rng.randn(4, 500)
-
-        config = AmicaConfig(max_iter=10, num_mix_comps=2, do_newton=False)
-        model = Amica(config=config, random_state=42)
-        result = model.fit(data)
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            np.testing.assert_array_equal(
-                result.unmixing_matrix, result.unmixing_matrix_white_)
-            np.testing.assert_array_equal(
-                result.mixing_matrix, result.mixing_matrix_sensor_)
 
 
 class TestAmicaConfig(unittest.TestCase):

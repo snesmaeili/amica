@@ -22,7 +22,6 @@ classifiers = [
 dependencies = [
     "numpy>=1.21",
     "scipy>=1.7",
-    "scikit-learn>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -30,8 +29,10 @@ jax = ["jax[cpu]>=0.4"]
 gpu = ["jax[cuda12]>=0.4"]
 mne = ["mne>=1.0"]
 icalabel = ["mne-icalabel>=0.4"]
-dev = ["pytest>=7.0", "mne>=1.0", "matplotlib>=3.5", "pre-commit>=3.0", "ruff>=0.9"]
-all = ["jax[cpu]>=0.4", "mne>=1.0", "matplotlib>=3.5", "pytest>=7.0", "scikit-learn>=1.0"]
+viz = ["matplotlib>=3.5"]
+docs = ["sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme"]
+dev = ["pytest>=7.0", "mne>=1.0", "matplotlib>=3.5", "pre-commit>=3.0", "ruff>=0.9", "sphinx>=5.0", "numpydoc"]
+all = ["jax[cpu]>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "pytest>=7.0"]
 
 [project.urls]
 Homepage = "https://github.com/snesmaeili/amica-python"

@@ -14,99 +14,42 @@ References
        (2008). Newton Method for the ICA Mixture Model. ICASSP 2008.
 """
 
-import os as _os
-
-_cache_dir = _os.environ.get('JAX_COMPILATION_CACHE_DIR') or _os.path.join(
-    _os.path.expanduser('~'), '.cache', 'amica-python', 'jax_cache'
-)
-try:
-    _os.makedirs(_cache_dir, exist_ok=True)
-    import jax as _jax
-    _jax.config.update('jax_compilation_cache_dir', _cache_dir)
-    _jax.config.update('jax_persistent_cache_min_compile_time_secs', 1.0)
-except Exception:
-    pass
-
 from .config import AmicaConfig
-from .solver import Amica, AmicaResult
+from .metrics import (
+    mixture_entropy,
+    multimodality_flag,
+    rho_mean,
+    rho_range,
+    source_kurtosis,
+)
+from .mne_integration import fit_ica
+from .solver import Amica, AmicaResult, amica
+from .viz import (
+    plot_component_metrics,
+    plot_convergence,
+    plot_mixture_weights,
+    plot_model_responsibilities,
+    plot_parameter_summary,
+    plot_shape_parameters,
+    plot_source_densities,
+)
 
-__all__ = ["Amica", "AmicaConfig", "AmicaResult", "amica", "fit_ica", "viz", "metrics"]
-
-
-def fit_ica(inst, n_components=None, max_iter=2000, num_mix=3,
-            random_state=None, picks=None, reject=None, flat=None,
-            decim=None, fit_params=None, verbose=None, **kwargs):
-    """Fit ICA using AMICA on MNE Raw or Epochs data.
-
-    See :func:`amica_python.mne_integration.fit_ica` for full docs.
-    """
-    from .mne_integration import fit_ica as _fit_ica
-    return _fit_ica(
-        inst, n_components=n_components, max_iter=max_iter,
-        num_mix=num_mix, random_state=random_state, picks=picks,
-        reject=reject, flat=flat, decim=decim, fit_params=fit_params,
-        verbose=verbose, **kwargs,
-    )
-__version__ = "0.1.0"
-
-
-def amica(X, n_components=None, whiten=False, return_n_iter=False,
-          random_state=None, max_iter=2000, num_mix=3, **kwargs):
-    """Adaptive Mixture ICA (AMICA).
-
-    Compatible with MNE-Python's ``ICA(method='amica')``.
-    Follows the Picard integration pattern.
-
-    Parameters
-    ----------
-    X : ndarray, shape (n_samples, n_components)
-        Pre-whitened data (MNE convention: samples x components).
-    n_components : int or None
-        Number of components. If None, uses X.shape[1].
-    whiten : bool
-        If True, whiten the data. MNE passes False (pre-whitened).
-    return_n_iter : bool
-        If True, return (W, n_iter) tuple.
-    random_state : int or None
-        Random seed for reproducibility.
-    max_iter : int
-        Maximum number of EM iterations.
-    num_mix : int
-        Number of generalized Gaussian mixture components per source.
-    **kwargs
-        Additional parameters passed to AmicaConfig.
-
-    Returns
-    -------
-    W : ndarray, shape (n_components, n_components)
-        Unmixing matrix.
-    n_iter : int
-        Number of iterations (only if return_n_iter=True).
-    """
-    import numpy as np
-
-    # random_state is passed to Amica solver, which uses jax.random.PRNGKey
-
-    n_comp = n_components or X.shape[1]
-
-    # Build config from kwargs
-    cfg_kwargs = {
-        "max_iter": max_iter,
-        "num_mix_comps": num_mix,
-        "do_sphere": whiten,
-        "do_mean": whiten,
-    }
-    cfg_kwargs.update(kwargs)
-    config = AmicaConfig(**cfg_kwargs)
-
-    # AMICA expects (n_channels, n_samples), MNE passes (n_samples, n_components)
-    data = X.T  # (n_components, n_samples)
-
-    solver = Amica(config, random_state=random_state)
-    result = solver.fit(data)
-
-    W = result.unmixing_matrix_white_  # (n_components, n_components)
-
-    if return_n_iter:
-        return W, result.n_iter
-    return W
+__all__ = [
+    "Amica",
+    "AmicaConfig",
+    "AmicaResult",
+    "amica",
+    "fit_ica",
+    "rho_mean",
+    "rho_range",
+    "mixture_entropy",
+    "multimodality_flag",
+    "source_kurtosis",
+    "plot_convergence",
+    "plot_source_densities",
+    "plot_model_responsibilities",
+    "plot_mixture_weights",
+    "plot_shape_parameters",
+    "plot_parameter_summary",
+    "plot_component_metrics",
+]
