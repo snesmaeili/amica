@@ -1,4 +1,6 @@
 # amica-python
+[![Tests](https://github.com/snesmaeili/amica-python/actions/workflows/tests.yml/badge.svg)](https://github.com/snesmaeili/amica-python/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/snesmaeili/amica-python/branch/main/graph/badge.svg)](https://codecov.io/gh/snesmaeili/amica-python)
 
 > **Note:** This package is under active validation. The core algorithm works and matches MATLAB AMICA numerically, but the full validation suite and documentation are still in progress.
 

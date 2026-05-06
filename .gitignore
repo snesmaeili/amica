@@ -22,3 +22,8 @@ logs/
 
 # Stray build artifacts
 *.f90
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/

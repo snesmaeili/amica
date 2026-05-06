@@ -69,9 +69,31 @@ if not HAS_JAX:
             Unlike true `jax.vmap`, this does not actually vectorize operations
             in C/C++ and will be significantly slower for large batch dimensions.
             """
+            in_axes = kwargs.get("in_axes", 0)
 
             def vmapped(*arrays):
-                results = [func(*[a[i] for a in arrays]) for i in range(len(arrays[0]))]
+                if isinstance(in_axes, int):
+                    axes = (in_axes,) * len(arrays)
+                else:
+                    axes = in_axes
+
+                # Find length of mapped axis
+                n = 0
+                for a, ax in zip(arrays, axes):
+                    if ax is not None:
+                        n = a.shape[ax]
+                        break
+
+                results = []
+                for i in range(n):
+                    args_i = []
+                    for a, ax in zip(arrays, axes):
+                        if ax is None:
+                            args_i.append(a)
+                        else:
+                            args_i.append(np.take(a, i, axis=ax))
+                    results.append(func(*args_i))
+
                 # Handle tuple returns like JAX: return tuple of stacked arrays
                 if results and isinstance(results[0], tuple):
                     n_outputs = len(results[0])

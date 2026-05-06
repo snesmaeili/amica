@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Native Python AMICA (Adaptive Mixture ICA) for MNE-Python"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "Sina Esmaeili", email = "sina.esmaeili@umontreal.ca"},
 ]
@@ -31,7 +31,7 @@ mne = ["mne>=1.0"]
 icalabel = ["mne-icalabel>=0.4"]
 viz = ["matplotlib>=3.5"]
 docs = ["sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme"]
-dev = ["pytest>=7.0", "mne>=1.0", "matplotlib>=3.5", "pre-commit>=3.0", "ruff>=0.9", "sphinx>=5.0", "numpydoc"]
+dev = ["pytest>=7.0", "pytest-cov", "mne>=1.0", "matplotlib>=3.5", "pre-commit>=3.0", "ruff>=0.9", "sphinx>=5.0", "numpydoc"]
 all = ["jax[cpu]>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "pytest>=7.0"]
 
 [project.urls]
@@ -54,3 +54,6 @@ known-first-party = ["amica_python"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = ["amica_python/binary.py"]

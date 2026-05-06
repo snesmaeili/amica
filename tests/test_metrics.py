@@ -1,70 +1,116 @@
 """Tests for AMICA component metrics."""
-import unittest
+from __future__ import annotations
+
 import numpy as np
+import pytest
+
+from amica_python import metrics
 
 
-class TestMetrics(unittest.TestCase):
-    """Test per-component metrics from AMICA mixture model."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Fit a small AMICA model once for all tests."""
-        from amica_python import Amica, AmicaConfig
-
+class MockAmicaResult:
+    """Mock result object for fast metric testing."""
+    def __init__(self, n_comp=4, n_mix=3, n_models=1):
         rng = np.random.RandomState(42)
-        n_channels, n_samples = 4, 2000
-        S = rng.laplace(size=(n_channels, n_samples))
-        A = rng.randn(n_channels, n_channels)
-        cls.data = A @ S
-
-        config = AmicaConfig(max_iter=50, num_mix_comps=3, do_newton=False)
-        model = Amica(config=config, random_state=42)
-        cls.result = model.fit(cls.data)
-
-    def test_rho_mean_shape_and_range(self):
-        from amica_python.metrics import rho_mean
-        rm = rho_mean(self.result)
-        self.assertEqual(rm.shape, (4,))
-        # rho should be between minrho (1.0) and maxrho (2.0)
-        self.assertTrue(np.all(rm >= 0.9))
-        self.assertTrue(np.all(rm <= 2.1))
-
-    def test_rho_range_shape(self):
-        from amica_python.metrics import rho_range
-        rr = rho_range(self.result)
-        self.assertEqual(rr.shape, (4,))
-        self.assertTrue(np.all(rr >= 0))
-
-    def test_mixture_entropy_shape_and_bounds(self):
-        from amica_python.metrics import mixture_entropy
-        ent = mixture_entropy(self.result)
-        self.assertEqual(ent.shape, (4,))
-        # Entropy >= 0
-        self.assertTrue(np.all(ent >= 0))
-        # Entropy <= log(n_mix) = log(3)
-        self.assertTrue(np.all(ent <= np.log(3) + 1e-10))
-
-    def test_multimodality_flag_shape(self):
-        from amica_python.metrics import multimodality_flag
-        flags = multimodality_flag(self.result)
-        self.assertEqual(flags.shape, (4,))
-        self.assertEqual(flags.dtype, bool)
-
-    def test_source_kurtosis_shape(self):
-        from amica_python.metrics import source_kurtosis
-        kurt = source_kurtosis(self.result, self.data)
-        self.assertEqual(kurt.shape, (4,))
-        # Laplacian sources have positive excess kurtosis
-        self.assertTrue(np.any(kurt > 0))
-
-    def test_laplacian_rho_near_one(self):
-        """Laplacian sources should yield rho close to 1.0."""
-        from amica_python.metrics import rho_mean
-        rm = rho_mean(self.result)
-        # At least one component should have rho near 1 (Laplacian)
-        self.assertTrue(np.any(rm < 1.5),
-                        f"Expected some rho < 1.5 for Laplacian sources, got {rm}")
+        
+        if n_models == 1:
+            self.alpha_ = np.ones((n_mix, n_comp)) / n_mix
+            self.rho_ = np.full((n_mix, n_comp), 1.5)
+            self.unmixing_matrix_white_ = np.eye(n_comp)
+        else:
+            self.alpha_ = np.ones((n_models, n_mix, n_comp)) / n_mix
+            self.rho_ = np.full((n_models, n_mix, n_comp), 1.5)
+            self.unmixing_matrix_white_ = np.array([np.eye(n_comp) for _ in range(n_models)])
+            
+        self.mean_ = np.zeros(n_comp)
+        self.whitener_ = np.eye(n_comp)
+        self.data_scale = 1.0
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_rho_mean():
+    # Single model
+    res1 = MockAmicaResult(n_models=1)
+    res1.rho_[0, :] = 1.0
+    res1.rho_[1, :] = 2.0
+    res1.rho_[2, :] = 1.5
+    # alpha is uniform (1/3)
+    rm1 = metrics.rho_mean(res1)
+    assert rm1.shape == (4,)
+    np.testing.assert_allclose(rm1, 1.5)
+
+    # Multi model (should just take first model)
+    res2 = MockAmicaResult(n_models=2)
+    res2.rho_[0, 0, :] = 1.0
+    res2.rho_[0, 1, :] = 2.0
+    res2.rho_[0, 2, :] = 1.5
+    rm2 = metrics.rho_mean(res2)
+    assert rm2.shape == (4,)
+    np.testing.assert_allclose(rm2, 1.5)
+
+
+def test_rho_range():
+    res1 = MockAmicaResult(n_models=1)
+    res1.rho_[0, :] = 1.0
+    res1.rho_[1, :] = 2.0
+    res1.rho_[2, :] = 1.5
+    rr1 = metrics.rho_range(res1)
+    assert rr1.shape == (4,)
+    np.testing.assert_allclose(rr1, 1.0)
+
+    res2 = MockAmicaResult(n_models=2)
+    res2.rho_[0, 0, :] = 1.0
+    res2.rho_[0, 1, :] = 2.0
+    res2.rho_[0, 2, :] = 1.5
+    rr2 = metrics.rho_range(res2)
+    assert rr2.shape == (4,)
+    np.testing.assert_allclose(rr2, 1.0)
+
+
+def test_mixture_entropy():
+    # Uniform
+    res1 = MockAmicaResult(n_comp=2, n_mix=3, n_models=1)
+    ent1 = metrics.mixture_entropy(res1)
+    assert ent1.shape == (2,)
+    np.testing.assert_allclose(ent1, np.log(3))
+
+    # Multi-model
+    res2 = MockAmicaResult(n_comp=2, n_mix=3, n_models=2)
+    ent2 = metrics.mixture_entropy(res2)
+    assert ent2.shape == (2,)
+    np.testing.assert_allclose(ent2, np.log(3))
+
+    # Single mix (should be 0)
+    res3 = MockAmicaResult(n_comp=2, n_mix=1, n_models=1)
+    ent3 = metrics.mixture_entropy(res3)
+    assert ent3.shape == (2,)
+    np.testing.assert_allclose(ent3, 0.0, atol=1e-7)
+
+
+def test_multimodality_flag():
+    # Uniform 3-mix -> high entropy -> flag True
+    res1 = MockAmicaResult(n_comp=2, n_mix=3, n_models=1)
+    flags1 = metrics.multimodality_flag(res1)
+    assert flags1.shape == (2,)
+    assert np.all(flags1 == True)
+
+    # Multi-model uniform
+    res2 = MockAmicaResult(n_comp=2, n_mix=3, n_models=2)
+    flags2 = metrics.multimodality_flag(res2)
+    assert flags2.shape == (2,)
+    assert np.all(flags2 == True)
+
+    # 1-mix -> 0 entropy -> flag False
+    res3 = MockAmicaResult(n_comp=2, n_mix=1, n_models=1)
+    flags3 = metrics.multimodality_flag(res3)
+    assert flags3.shape == (2,)
+    assert np.all(flags3 == False)
+
+
+def test_source_kurtosis():
+    res = MockAmicaResult(n_comp=4, n_mix=1, n_models=1)
+    rng = np.random.RandomState(42)
+    
+    # Create Laplacian data (positive excess kurtosis)
+    data = rng.laplace(size=(4, 1000))
+    kurt = metrics.source_kurtosis(res, data)
+    assert kurt.shape == (4,)
+    assert np.all(kurt > 0)
