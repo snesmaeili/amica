@@ -26,8 +26,17 @@ if [ "$REINSTALL" = true ]; then
     pip install --no-index --upgrade pip
     
     # Install core dependencies from local checkout
-    # Note: using --no-index where possible, but may need internet for some
-    pip install -e "../../[all]"
+    # We install with [mne,icalabel] first to avoid forcing jax[cpu]
+    pip install -e "../../[mne,icalabel]"
+    
+    # Check if we are in a GPU job or have CUDA loaded
+    if [[ "$SLURM_JOB_PARTITION" == *"gpu"* ]] || [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
+        echo "GPU job detected, installing JAX with CUDA support..."
+        pip install --upgrade "jax[cuda12_pip]"
+    else
+        echo "CPU job detected, installing JAX [cpu]..."
+        pip install --upgrade "jax[cpu]"
+    fi
     
     # Install additional benchmarking dependencies
     pip install mne-icalabel mne-bids pandas openneuro-py
