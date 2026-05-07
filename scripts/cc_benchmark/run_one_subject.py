@@ -31,7 +31,14 @@ def load_data(dataset_name, subject_id, task=None):
         if not bids_root.exists():
             print(f"Dataset ds004505 not found at {bids_root}. Attempting download...")
             import openneuro
-            openneuro.download(dataset="ds004505", target_dir=str(bids_root))
+            # Only download subject files and dataset metadata to save space/time
+            include_patterns = [
+                f"sub-{subject_id:02d}/*",
+                "dataset_description.json",
+                "participants.tsv",
+                "*.json"
+            ]
+            openneuro.download(dataset="ds004505", target_dir=str(bids_root), include=include_patterns)
             
         # If openneuro downloaded into a subfolder, adjust bids_root
         if (bids_root / "ds004505").exists() and not (bids_root / "dataset_description.json").exists():
