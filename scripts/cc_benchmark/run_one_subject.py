@@ -96,15 +96,18 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500):
         "method": "amica",
         "backend": backend,
         "device": device,
-        "runtime": duration,
-        "n_iter": ica.n_iter_,
-        "n_components": n_components,
-        "n_samples": raw.n_times
+        "runtime": float(duration),
+        "n_iter": int(ica.n_iter_),
+        "n_components": int(n_components),
+        "n_samples": int(raw.n_times)
     }
     
     try:
+        import warnings
         from mne_icalabel import label_components
-        labels = label_components(raw, ica, method="iclabel")
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*ICLabel.*")
+            labels = label_components(raw, ica, method="iclabel")
         for label, prob in zip(labels["labels"], labels["y_pred_proba"]):
             metrics[f"iclabel_{label}_mean_prob"] = float(np.mean(prob))
     except ImportError:
