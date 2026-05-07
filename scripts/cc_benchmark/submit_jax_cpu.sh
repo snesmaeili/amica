@@ -4,7 +4,7 @@
 #SBATCH --array=1
 #SBATCH --time=1:00:00
 #SBATCH --mem=32G
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=16
 #SBATCH --output=logs/jax_cpu_%a_%j.out
 #SBATCH --error=logs/jax_cpu_%a_%j.err
 

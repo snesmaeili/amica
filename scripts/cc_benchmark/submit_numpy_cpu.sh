@@ -3,8 +3,8 @@
 #SBATCH --account=rrg-kjerbi
 #SBATCH --array=1
 #SBATCH --time=1:00:00
-#SBATCH --mem=32G
-#SBATCH --cpus-per-task=32
+#SBATCH --mem=24G
+#SBATCH --cpus-per-task=4
 #SBATCH --output=logs/numpy_cpu_%a_%j.out
 #SBATCH --error=logs/numpy_cpu_%a_%j.err
 
