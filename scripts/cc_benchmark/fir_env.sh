@@ -5,8 +5,14 @@
 module load python/3.11
 module load scipy-stack
 
-# Load CUDA if GPU is needed (JAX will detect it)
+# Load CUDA and cuDNN for JAX GPU support
 module load cuda/12.2
+module load cudnn
+
+# Export path for XLA to find CUDA
+if [ -n "$CUDA_HOME" ]; then
+    export XLA_FLAGS="--xla_gpu_cuda_data_dir=$CUDA_HOME"
+fi
 
 if [ -n "$SLURM_TMPDIR" ]; then
     # Running on cluster node: use local SSD for speed
@@ -25,25 +31,22 @@ if [ "$REINSTALL" = true ]; then
     source "$VENV_PATH/bin/activate"
     pip install --no-index --upgrade pip
     
-    # Install core dependencies from local checkout
-    # We install with [mne,icalabel] first to avoid forcing jax[cpu]
-    pip install -e "../../[mne,icalabel]"
-    
     # Check if we are in a GPU job or have CUDA loaded
     if [[ "$SLURM_JOB_PARTITION" == *"gpu"* ]] || [[ -n "$CUDA_VISIBLE_DEVICES" ]]; then
-        echo "GPU job detected, installing JAX with CUDA support..."
-        pip install --upgrade "jax[cuda12_pip]"
+        echo "GPU job detected, installing with [all,gpu] extras..."
+        # On CC, we use the extras from pyproject.toml but point to the JAX releases URL
+        pip install -e "../../[all,gpu]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
     else
-        echo "CPU job detected, installing JAX [cpu]..."
-        pip install --upgrade "jax[cpu]"
+        echo "CPU job detected, installing with [all] extra..."
+        pip install -e "../../[all]"
     fi
     
     # Install additional benchmarking dependencies
-    pip install mne-icalabel mne-bids pandas openneuro-py
+    pip install mne-bids pandas openneuro-py
+    
+    echo "Environment installed. JAX version:"
+    python -c "import jax; print(f'JAX version: {jax.__version__}'); print(f'Devices: {jax.devices()}')"
 else
     echo "Activating existing virtual environment at $VENV_PATH"
     source "$VENV_PATH/bin/activate"
 fi
-
-# Set JAX to use GPU by default if available, or CPU
-# export JAX_PLATFORM_NAME=gpu
