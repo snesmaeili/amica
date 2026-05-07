@@ -2,7 +2,7 @@
 #SBATCH --job-name=amica_numpy_cpu
 #SBATCH --account=rrg-kjerbi
 #SBATCH --array=1
-#SBATCH --time=3:00:00
+#SBATCH --time=4:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=1
 #SBATCH --output=logs/numpy_cpu_%a_%j.out
