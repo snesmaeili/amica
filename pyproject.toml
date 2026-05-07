@@ -120,7 +120,7 @@ filterwarnings = [
     "error",
     "ignore:Unrecognized profile:UserWarning",
     "ignore:Unknown section Matrix Naming Convention:UserWarning",
-    "ignore:Citation.*is not referenced:WARNING",
+    "ignore:Citation.*is not referenced:UserWarning",
 ]
 
 [tool.coverage.run]
