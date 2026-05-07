@@ -32,6 +32,7 @@ def load_data(dataset_name, subject_id):
             import openneuro
             openneuro.download(dataset="ds004505", target_dir=str(bids_root))
             
+        print(f"Files in {bids_root}: {os.listdir(bids_root)}")
         bids_path = BIDSPath(subject=f"{subject_id:02d}", task="dual", root=bids_root, datatype="eeg")
         raw = read_raw_bids(bids_path)
         raw.load_data()
