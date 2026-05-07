@@ -421,7 +421,7 @@ def test_chunked_loglik_additivity():
         log_det_sphere=0.3,
     )
     ll_merged = float((ll_h1 + ll_h2) / (n1 + n2) / n_comp)
-    assert abs(ll_full - ll_merged) / max(abs(ll_full) < 1e-20, 1e-12)
+    assert abs(ll_full - ll_merged) < 1e-12
 
 def test_chunked_matches_fullbatch_synthetic():
     """Chunked vs full-batch: W and LL agree within rounding after 50 iters."""
