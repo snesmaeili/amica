@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=amica_jax_gpu
-#SBATCH --account=rrg-kjerbi
+#SBATCH --account=def-kjerbi
 #SBATCH --array=1
 #SBATCH --time=1:00:00
 #SBATCH --mem=32G
