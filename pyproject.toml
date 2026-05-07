@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "amica-python"
-version = "0.1.0"
+version = "0.0.1"
 description = "Native Python AMICA (Adaptive Mixture ICA) for MNE-Python"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
@@ -31,8 +31,41 @@ mne = ["mne>=1.0"]
 icalabel = ["mne-icalabel>=0.4"]
 viz = ["matplotlib>=3.5"]
 docs = ["sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme"]
-dev = ["pytest>=7.0", "pytest-cov", "pytest-xdist", "mne>=1.0", "matplotlib>=3.5", "pre-commit>=3.0", "ruff>=0.9", "sphinx>=5.0", "numpydoc"]
+dev = ["pytest>=7.0", "pytest-cov", "pytest-xdist", "towncrier>=23.0", "mne>=1.0", "matplotlib>=3.5", "pre-commit>=3.0", "ruff>=0.9", "sphinx>=5.0", "numpydoc"]
 all = ["jax[cpu]>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "pytest>=7.0"]
+
+[tool.towncrier]
+package = "amica_python"
+filename = "CHANGELOG.md"
+directory = "changes"
+title_format = "## [{version}](https://github.com/snesmaeili/amica-python/releases/tag/v{version}) ({project_date})"
+issue_format = "[#{issue}](https://github.com/snesmaeili/amica-python/pull/{issue})"
+template = "changes/template.md"
+
+[[tool.towncrier.type]]
+directory = "enh"
+name = "Enhancements"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Bug Fixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "api"
+name = "API Changes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "dep"
+name = "Dependencies"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "authors"
+name = "Authors"
+showcontent = true
 
 [project.urls]
 Homepage = "https://github.com/snesmaeili/amica-python"
