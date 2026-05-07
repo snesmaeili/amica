@@ -121,6 +121,7 @@ filterwarnings = [
     "ignore:Unrecognized profile:UserWarning",
     "ignore:Unknown section Matrix Naming Convention:UserWarning",
     "ignore:Citation.*is not referenced:UserWarning",
+    "ignore:The rcond argument for linalg.pinv is deprecated:DeprecationWarning",
 ]
 
 [tool.coverage.run]
