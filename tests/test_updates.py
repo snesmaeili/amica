@@ -24,7 +24,7 @@ def _make_mock_inputs(n_comp=4, n_mix=3, n_samp=1000):
 # ---------------------------------------------------------------------------
 
 def test_compute_newton_terms():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     n_comp, n_mix, n_samp = 4, 3, 500
     y, alpha, mu, beta, rho = _make_mock_inputs(n_comp, n_mix, n_samp)
 
@@ -40,7 +40,7 @@ def test_compute_newton_terms():
 
 
 def test_update_alpha():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     rng = np.random.RandomState(42)
     resp = rng.rand(3, 100)
     resp /= resp.sum(axis=0, keepdims=True)
@@ -53,7 +53,7 @@ def test_update_alpha():
 
 
 def test_update_mu_beta_rho():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     n_comp, n_mix, n_samp = 4, 3, 500
     y, alpha, mu, beta, rho = _make_mock_inputs(n_comp, n_mix, n_samp)
 
@@ -82,7 +82,7 @@ def test_update_mu_beta_rho():
 
 
 def test_natural_gradient_and_newton_correction():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     rng = np.random.RandomState(42)
     n_comp, n_samp = 4, 1000
     g = rng.randn(n_comp, n_samp)
@@ -109,7 +109,7 @@ def test_natural_gradient_and_newton_correction():
 
 
 def test_update_all_pdf_params():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     from amica_python.config import AmicaConfig
     n_comp, n_mix, n_samp = 4, 3, 500
     y, alpha, mu, beta, rho = _make_mock_inputs(n_comp, n_mix, n_samp)
@@ -127,7 +127,7 @@ def test_update_all_pdf_params():
 
 
 def test_update_model_weights():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     rng = np.random.RandomState(42)
     model_logliks = rng.randn(2, 500)
     gm_current = np.array([0.4, 0.6])
@@ -142,7 +142,7 @@ def test_update_model_weights():
 # ---------------------------------------------------------------------------
 
 def test_apply_updates_from_stats():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     n_comp, n_mix = 4, 3
     rng = np.random.RandomState(42)
 

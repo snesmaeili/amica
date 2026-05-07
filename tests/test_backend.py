@@ -42,7 +42,7 @@ def test_ensure_numpy():
     assert isinstance(res_np, np.ndarray)
 
     if backend.HAS_JAX:
-        import jax.numpy as jnp
+        from amica_python.backend import jnp
         arr_jnp = jnp.array([6.0, 7.0])
         res_jnp = backend.ensure_numpy(arr_jnp)
         assert isinstance(res_jnp, np.ndarray)

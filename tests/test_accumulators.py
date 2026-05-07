@@ -25,7 +25,7 @@ def _make_mock_inputs(n_comp=4, n_mix=3, n_chunk=1000):
 
 def test_zero_stats():
     from amica_python.accumulators import zero_stats
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
 
     stats = zero_stats(n_comp=4, n_mix=3)
     
@@ -44,7 +44,7 @@ def test_zero_stats():
 
 def test_add_stats():
     from amica_python.accumulators import zero_stats, add_stats
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
 
     stats1 = zero_stats(4, 3)
     stats2 = zero_stats(4, 3)
@@ -67,7 +67,7 @@ def test_add_stats():
 
 
 def test_compute_chunk_stats():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     from amica_python.accumulators import compute_chunk_stats
 
     n_comp, n_mix, n_chunk = 4, 3, 500
@@ -106,7 +106,7 @@ def test_compute_chunk_stats():
 
 def test_chunk_stats_additivity():
     """Verify that adding two chunk stats equals computing stats on the full data."""
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     from amica_python.accumulators import compute_chunk_stats, add_stats
 
     n_comp, n_mix, n_chunk = 4, 3, 1000

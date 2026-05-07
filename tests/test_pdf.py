@@ -25,7 +25,7 @@ def _make_mock_inputs(n_comp=4, n_mix=3, n_samp=1000):
 # ---------------------------------------------------------------------------
 
 def test_log_generalized_gaussian():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     rng = np.random.RandomState(42)
     y = rng.randn(500)
     mu = 0.5
@@ -58,7 +58,7 @@ def test_log_generalized_gaussian():
 
 
 def test_log_generalized_gaussian_mixture():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     rng = np.random.RandomState(42)
     y = rng.randn(500)
     n_mix = 3
@@ -77,7 +77,7 @@ def test_log_generalized_gaussian_mixture():
 
 
 def test_compute_responsibilities():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     rng = np.random.RandomState(42)
     y = rng.randn(500)
     n_mix = 3
@@ -101,7 +101,7 @@ def test_compute_responsibilities():
 
 
 def test_score_functions():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     rng = np.random.RandomState(42)
     y = rng.randn(500)
     n_mix = 3
@@ -131,7 +131,7 @@ def test_score_functions():
 
 
 def test_compute_all_scores_and_likelihood():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     n_comp, n_mix, n_samp = 4, 3, 500
     y, alpha, mu, beta, rho = _make_mock_inputs(n_comp, n_mix, n_samp)
 

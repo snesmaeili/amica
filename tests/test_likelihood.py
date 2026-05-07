@@ -29,7 +29,7 @@ def _make_params(n_comp=4, n_mix=3, n_samp=1000, rng=None):
 # ---------------------------------------------------------------------------
 
 def test_compute_log_det_W():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     from amica_python.likelihood import compute_log_det_W
 
     # Identity
@@ -51,7 +51,7 @@ def test_compute_log_det_W():
 
 
 def test_model_and_average_loglikelihood():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     from amica_python.likelihood import (
         compute_log_det_W,
         compute_model_loglikelihood,
@@ -80,7 +80,7 @@ def test_model_and_average_loglikelihood():
 
 
 def test_total_loglikelihood_and_chunks():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     from amica_python.likelihood import compute_total_loglikelihood, compute_loglik_chunk
 
     rng = np.random.RandomState(10)
@@ -120,7 +120,7 @@ def test_total_loglikelihood_and_chunks():
 
 
 def test_multimodel_loglikelihood():
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     from amica_python.likelihood import compute_multimodel_loglikelihood
 
     n_models = 2

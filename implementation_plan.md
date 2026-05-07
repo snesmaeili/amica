@@ -9,11 +9,9 @@ All code-level blockers (items 1–17 in `package_review.md`) are resolved and p
 
 | # | Item | Priority |
 |---|------|----------|
-| 12 | Enforce **90–95% coverage** | ✅ Done |
 | 13 | Add `CHANGELOG.md` — **MNE-style (towncrier)** | 🟡 High |
 | 18 | Multi-subject ds004505 ICLabel benchmark — **SLURM array job** on Compute Canada | 🟡 High |
 | 19 | Sphinx docs | 🟢 Post-release |
-| 21 | Codecov badge in README | ✅ Done |
 | 23 | PyPI publish workflow | 🟢 Post-release |
 
 **Focus this sprint: Items 12 (remainder), 13, 18.**
@@ -24,43 +22,12 @@ All code-level blockers (items 1–17 in `package_review.md`) are resolved and p
 
 | Question | Answer |
 |----------|--------|
-| Coverage target | **90–95%** enforced via `--cov-fail-under=90` |
 | Changelog format | **MNE-style towncrier** with `changes/` fragment directory |
 | Benchmark execution | **SLURM array job** (`--array=1-25`) on Narval/Compute Canada |
 | Release version | **0.0.1** (pre-release) |
 | Python versions (CI matrix) | **3.10 – 3.14** |
 | Backend CI matrix | **JAX + NumPy** via `AMICA_NO_JAX` env var |
 | Test pattern | **Flat functions only** (no test classes) |
-
----
-
-## Sprint 1: Coverage Hardening (Item 12) — Status
-
-### Current coverage snapshot (2026-05-06)
-
-| Module | Coverage | Status |
-|--------|----------|--------|
-| `__init__.py` | **100%** | ✅ Done |
-| `accumulators.py` | **100%** | ✅ Done — `test_accumulators.py` |
-| `likelihood.py` | **100%** | ✅ Done — `test_likelihood.py` |
-| `pdf.py` | **96%** | ✅ Done — `test_pdf.py` (lines 10-12 = NumPy fallback, covered in CI NumPy matrix) |
-| `preprocessing.py` | **100%** | ✅ Done — `test_preprocessing.py` |
-| `updates.py` | **99%** | ✅ Done — `test_updates.py` (lines 12-14 = NumPy fallback import, CI matrix) |
-| `viz.py` | **100%** | ✅ Done — `test_viz.py` |
-| `backend.py` | **36% (local)** | ⚠️ JAX init block (lines 18-38) only runs when JAX installed. CI JAX matrix job covers it. NumPy stub (42-129) covered by `AMICA_NO_JAX=1` matrix job. |
-| `config.py` | **100%** | ✅ Done — `test_config.py` |
-| `metrics.py` | **100%** | ✅ Done — `test_metrics.py` |
-| `mne_integration.py` | **100%** | ✅ Done — `test_mne_integration.py` |
-| `solver.py` | **91%** | ✅ Done — `test_solver_paths.py` |
-| `binary.py` | **excluded** | ✅ Excluded from coverage target |
-
-**Package total (excl. binary.py): ~92%** → Target: **90–95%**
-
-### Remaining test files to create
-
-#### [NEW] `tests/test_solver_paths.py`
-- [x] `solver.py` (Current: 91%, Target: 90%+)
-  - *Strategy*: Focus on the `_amica_step` control flow blocks (`do_newton`, `do_mean`, `pcakeep`) using small mock matrices. Test the checkpointing save/load logic explicitly. Bypass deep JAX numeric validation by focusing on shape propagation and boundary logic. Fixed `vmapped` dummy implementation in `backend.py` to correctly map `in_axes` and eliminate `IndexError` during testing.
 
 ---
 
@@ -86,10 +53,6 @@ Towncrier fragment directory. Fragment types match MNE:
 - Add `[tool.towncrier]` config block
 - Add `towncrier>=23.0` to `dev` extra
 - Add `--cov-fail-under=90` to `addopts` once coverage target is reached
-
-#### [MODIFY] `.github/workflows/tests.yml`
-- [x] Add `--cov-report=xml` and `--cov-fail-under=90`
-- [x] Upload `coverage.xml` to Codecov via GitHub Secrets
 
 ---
 

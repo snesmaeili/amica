@@ -392,7 +392,7 @@ def test_apply_preserves_shape():
 
 def test_chunked_loglik_additivity():
     """sum(compute_loglik_chunk) across halves == compute_total_loglikelihood."""
-    import jax.numpy as jnp
+    from amica_python.backend import jnp
     from amica_python.likelihood import (
         compute_total_loglikelihood, compute_loglik_chunk,
     )
