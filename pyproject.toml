@@ -30,9 +30,32 @@ gpu = ["jax[cuda12]>=0.4"]
 mne = ["mne>=1.0"]
 icalabel = ["mne-icalabel>=0.4"]
 viz = ["matplotlib>=3.5"]
-docs = ["sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme"]
-dev = ["pytest>=7.0", "pytest-cov", "pytest-xdist", "towncrier>=23.0", "mne>=1.0", "matplotlib>=3.5", "pre-commit>=3.0", "ruff>=0.9", "sphinx>=5.0", "numpydoc"]
-all = ["jax[cpu]>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "pytest>=7.0"]
+all = ["jax[cpu]>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4"]
+
+[dependency-groups]
+test = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "pytest-xdist",
+]
+docs = [
+    "sphinx>=5.0",
+    "numpydoc",
+    "sphinx-gallery",
+    "pydata-sphinx-theme",
+    "myst-parser",
+]
+lint = [
+    "pre-commit>=3.0",
+    "ruff>=0.9",
+]
+dev = [
+    {include-group = "test"},
+    {include-group = "docs"},
+    {include-group = "lint"},
+    "towncrier>=23.0",
+    "nox",
+]
 
 [tool.towncrier]
 package = "amica_python"
@@ -76,17 +99,27 @@ include = ["amica_python*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
+extend-select = ["B", "UP"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["amica_python"]
 
-[tool.pytest.ini_options]
+[tool.pytest]
+minversion = "9"
 testpaths = ["tests"]
+log_level = "INFO"
+strict = true
+addopts = ["-ra"]
+filterwarnings = [
+    "error",
+    "ignore:Unrecognized profile:UserWarning",
+    "ignore:Unknown section Matrix Naming Convention:UserWarning",
+    "ignore:Citation.*is not referenced:WARNING",
+]
 
 [tool.coverage.run]
 omit = ["amica_python/binary.py"]

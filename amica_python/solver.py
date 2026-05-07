@@ -8,7 +8,7 @@ from collections import namedtuple
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 
@@ -635,8 +635,8 @@ class AmicaResult:
         """
         try:
             from mne.preprocessing import ICA
-        except ImportError:
-            raise ImportError("MNE-Python is required for to_mne().")
+        except ImportError as err:
+            raise ImportError("MNE-Python is required for to_mne().") from err
 
         W = np.asarray(self.unmixing_matrix_white_)  # (n_comp, n_comp)
         S = np.asarray(self.whitener_)  # (n_comp, n_ch)
@@ -749,13 +749,13 @@ class Amica:
 
     def __init__(
         self,
-        config: Optional[AmicaConfig] = None,
-        random_state: Optional[int] = None,
+        config: AmicaConfig | None = None,
+        random_state: int | None = None,
     ):
         self.config = config if config is not None else AmicaConfig()
         self.random_state = random_state
         self.rng = jax.random.PRNGKey(random_state if random_state is not None else 0)
-        self.result_ = None
+        self.result_: AmicaResult | None = None
 
     def get_params(self, deep: bool = True) -> dict:
         """Get parameters for this estimator.
@@ -773,7 +773,7 @@ class Amica:
         """
         return {"config": self.config, "random_state": self.random_state}
 
-    def set_params(self, **params) -> "Amica":
+    def set_params(self, **params) -> Amica:
         """Set the parameters of this estimator.
 
         Parameters
@@ -812,10 +812,10 @@ class Amica:
     def fit(
         self,
         data: np.ndarray,
-        init_mean: Optional[np.ndarray] = None,
-        init_sphere: Optional[np.ndarray] = None,
-        init_weights: Optional[np.ndarray] = None,
-        init_params: Optional[dict] = None,
+        init_mean: np.ndarray | None = None,
+        init_sphere: np.ndarray | None = None,
+        init_weights: np.ndarray | None = None,
+        init_params: dict | None = None,
     ) -> AmicaResult:
         """Fit AMICA model to data.
 
@@ -920,9 +920,9 @@ class Amica:
         numincs = 0
 
         # ========== Main EM Loop ==========
-        LL = []
-        iteration_times: List[float] = []
-        elapsed_times: List[float] = []
+        LL: list[float] = []
+        iteration_times: list[float] = []
+        elapsed_times: list[float] = []
         converged = False
         newton_count = 0  # Track how many iterations actually used Newton
         natgrad_fallback_count = 0  # Track Newton fallbacks
@@ -983,15 +983,14 @@ class Amica:
             lrate = min(ceiling, lrate + min(1.0 / self.config.newt_ramp, lrate))
 
             # Dispatch: full-batch (default) or chunked E-step
-            _step_fn = (
-                _amica_step
-                if self.config.chunk_size is None
-                else (
-                    lambda *args, **kw: _amica_step_chunked(
-                        *args, chunk_size=self.config.chunk_size, **kw
-                    )
-                )
-            )
+            if self.config.chunk_size is not None:
+                cs = self.config.chunk_size
+
+                def _step_fn(*args, cs=cs):
+                    return _amica_step_chunked(*args, chunk_size=cs)
+
+            else:
+                _step_fn = _amica_step
             (
                 W_new,
                 A_new,
@@ -1203,6 +1202,7 @@ class Amica:
             data_scale=scaling_factor,
         )
 
+        assert self.result_ is not None
         return self.result_
 
     def _initialize_params(
@@ -1211,9 +1211,9 @@ class Amica:
         n_mix: int,
         n_models: int,
         dtype: Any = jnp.float64,
-        init_weights: Optional[np.ndarray] = None,
-        init_params: Optional[dict] = None,
-    ) -> Tuple[jnp.ndarray, ...]:
+        init_weights: np.ndarray | None = None,
+        init_params: dict | None = None,
+    ) -> tuple[jnp.ndarray, ...]:
         """Initialize model parameters.
 
         Parameters
@@ -1358,7 +1358,7 @@ class Amica:
 
         return data / self.result_.data_scale
 
-    def save(self, outdir: Union[str, Path]) -> None:
+    def save(self, outdir: str | Path) -> None:
         """Save model to directory in AMICA-compatible format.
 
         Parameters
@@ -1391,7 +1391,7 @@ class Amica:
         logger.info("Saved model to %s", outdir)
 
     @classmethod
-    def load(cls, outdir: Union[str, Path]) -> "Amica":
+    def load(cls, outdir: str | Path) -> Amica:
         """Load model from AMICA-compatible directory.
 
         Parameters

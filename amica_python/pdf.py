@@ -12,15 +12,12 @@ else:
     gammaln = scipy_gammaln
 
 
-from typing import Union
-
-
 @jax.jit
 def log_generalized_gaussian(
     y: jnp.ndarray,
-    mu: Union[float, jnp.ndarray],
-    beta: Union[float, jnp.ndarray],
-    rho: Union[float, jnp.ndarray],
+    mu: float | jnp.ndarray,
+    beta: float | jnp.ndarray,
+    rho: float | jnp.ndarray,
 ) -> jnp.ndarray:
     """Compute log PDF of a single generalized Gaussian.
 
@@ -173,9 +170,9 @@ def compute_responsibilities(
 @jax.jit
 def compute_score_function(
     y: jnp.ndarray,
-    mu: Union[float, jnp.ndarray],
-    beta: Union[float, jnp.ndarray],
-    rho: Union[float, jnp.ndarray],
+    mu: float | jnp.ndarray,
+    beta: float | jnp.ndarray,
+    rho: float | jnp.ndarray,
 ) -> jnp.ndarray:
     """Compute score function f'(y) for generalized Gaussian.
 

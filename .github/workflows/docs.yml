@@ -2,12 +2,14 @@ name: Docs
 
 on:
   push:
-    branches:
-      - main
-      - production-ready-amica
+    branches: [main, production-ready-amica]
   pull_request:
-    branches:
-      - main
+    branches: [main, production-ready-amica]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:

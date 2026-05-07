@@ -14,7 +14,6 @@ import subprocess
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 
@@ -40,8 +39,8 @@ class BinaryAmica:
 
     def __init__(
         self,
-        binary_path: Union[str, Path],
-        config: Optional[AmicaConfig] = None,
+        binary_path: str | Path,
+        config: AmicaConfig | None = None,
         keep_temp_files: bool = False,
     ):
         self.binary_path = str(binary_path)
@@ -49,9 +48,9 @@ class BinaryAmica:
         self.keep_temp_files = keep_temp_files
 
         if not os.path.exists(self.binary_path) and not shutil.which(self.binary_path):
-            warnings.warn(f"AMICA binary not found at {self.binary_path}")
+            warnings.warn(f"AMICA binary not found at {self.binary_path}", stacklevel=2)
 
-    def fit(self, data: np.ndarray, temp_dir: Optional[Union[str, Path]] = None) -> AmicaResult:
+    def fit(self, data: np.ndarray, temp_dir: str | Path | None = None) -> AmicaResult:
         """Run AMICA binary on data.
 
         Parameters

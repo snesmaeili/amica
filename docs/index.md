@@ -1,8 +1,9 @@
 # amica-python
 
 ```{toctree}
-:hidden:
-
+---
+hidden:
+---
 examples
 explanation
 faq

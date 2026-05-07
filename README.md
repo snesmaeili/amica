@@ -1,4 +1,5 @@
 # amica-python
+
 [![Tests](https://github.com/snesmaeili/amica-python/actions/workflows/tests.yml/badge.svg)](https://github.com/snesmaeili/amica-python/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/snesmaeili/amica-python/branch/main/graph/badge.svg)](https://codecov.io/gh/snesmaeili/amica-python)
 [![Python](https://img.shields.io/pypi/pyversions/amica-python.svg)](https://pypi.org/project/amica-python/)
@@ -60,11 +61,11 @@ Convergence uses natural gradient followed by Newton optimization (Palmer et al.
 
 Numerical parity with MATLAB AMICA 1.7:
 
-| Configuration | LL difference | W correlation |
-| --- | --- | --- |
-| 1 model, Newton | 0.0002% | > 0.9999 |
-| 3 mixtures, Newton | 0.00008% | > 0.9999 |
-| 3 mixtures, natural gradient | 0.08% | > 0.9995 |
+| Configuration                | LL difference | W correlation |
+| ---------------------------- | ------------- | ------------- |
+| 1 model, Newton              | 0.0002%       | > 0.9999      |
+| 3 mixtures, Newton           | 0.00008%      | > 0.9999      |
+| 3 mixtures, natural gradient | 0.08%         | > 0.9995      |
 
 Amari index on synthetic Laplacian sources (3 ch, 5000 samples): AMICA 0.008, FastICA 0.010, Infomax 0.195.
 
@@ -72,14 +73,14 @@ Amari index on synthetic Laplacian sources (3 ch, 5000 samples): AMICA 0.008, Fa
 
 Defaults follow Frank et al. (2023) and Klug et al. (2024):
 
-| Parameter | Default | What it does |
-| --- | --- | --- |
-| `max_iter` | 2000 | EM iterations |
-| `num_mix_comps` | 3 | Mixture components per source |
-| `do_newton` | True | Newton optimization after iteration 50 |
-| `do_reject` | False | Outlier sample rejection |
-| `rejsig` | 3.0 | Rejection threshold in SD |
-| `rho0` | 1.5 | Initial shape parameter |
+| Parameter       | Default | What it does                           |
+| --------------- | ------- | -------------------------------------- |
+| `max_iter`      | 2000    | EM iterations                          |
+| `num_mix_comps` | 3       | Mixture components per source          |
+| `do_newton`     | True    | Newton optimization after iteration 50 |
+| `do_reject`     | False   | Outlier sample rejection               |
+| `rejsig`        | 3.0     | Rejection threshold in SD              |
+| `rho0`          | 1.5     | Initial shape parameter                |
 
 ## References
 

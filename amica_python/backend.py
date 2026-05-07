@@ -6,7 +6,7 @@ This module provides NumPy implementations when JAX is not available.
 from __future__ import annotations
 
 import os
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 
@@ -50,7 +50,7 @@ if not HAS_JAX:
         """
 
         @staticmethod
-        def jit(func: Callable = None, **kwargs) -> Callable:
+        def jit(func: Callable | None = None, **kwargs) -> Callable:
             """Stub for jax.jit. Returns the function uncompiled."""
             # handle @jax.jit() or @jax.jit(static_argnames=...)
             if func is None:
@@ -79,7 +79,7 @@ if not HAS_JAX:
 
                 # Find length of mapped axis
                 n = 0
-                for a, ax in zip(arrays, axes):
+                for a, ax in zip(arrays, axes, strict=True):
                     if ax is not None:
                         n = a.shape[ax]
                         break
@@ -87,7 +87,7 @@ if not HAS_JAX:
                 results = []
                 for i in range(n):
                     args_i = []
-                    for a, ax in zip(arrays, axes):
+                    for a, ax in zip(arrays, axes, strict=True):
                         if ax is None:
                             args_i.append(a)
                         else:

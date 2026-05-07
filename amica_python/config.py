@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -100,7 +99,7 @@ class AmicaConfig:
     # Model structure
     num_models: int = 1
     num_mix_comps: int = 3
-    pcakeep: Optional[int] = None
+    pcakeep: int | None = None
     dtype: str = "float64"  # "float32" or "float64"
 
     # Iteration control
@@ -154,7 +153,7 @@ class AmicaConfig:
 
     # Output
     writestep: int = 100
-    outdir: Optional[Path] = None
+    outdir: Path | None = None
 
     # Initialization
     fix_init: bool = False
@@ -170,7 +169,7 @@ class AmicaConfig:
     # reduce peak RAM from O(T*M*n*J) to O(chunk_t*M*n*J). The per-iteration
     # objective is unchanged (algebraic identity, not mini-batch SGD) — one
     # M-step per iteration on the accumulated sufficient statistics.
-    chunk_size: Optional[int] = None
+    chunk_size: int | None = None
 
     def __post_init__(self):
         """Validate configuration."""

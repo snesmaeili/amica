@@ -5,30 +5,38 @@ Thank you for your interest in contributing to amica-python! This document provi
 ## Getting Started
 
 1. Fork the repository on GitHub
-2. Clone your fork locally:
+1. Clone your fork locally:
    ```bash
    git clone https://github.com/<your-username>/amica-python.git
    cd amica-python
    ```
-3. Create a virtual environment and install in development mode:
+1. Create a virtual environment and install in development mode:
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # or .venv\Scripts\activate on Windows
    pip install -e ".[dev,mne,jax]"
    pre-commit install
    ```
-4. Create a feature branch:
+1. Create a feature branch:
    ```bash
    git checkout -b feature/your-feature-name
    ```
 
 ## Development Workflow
 
-### Running Tests
-
-```bash
 python -m pytest tests/ -v
+
 ```
+
+### Using Nox
+
+We use `nox` to manage development environments and automate tasks. You can run:
+
+- `nox -s tests`: Run tests across all supported Python versions.
+- `nox -s lint`: Run the linters.
+- `nox -s docs`: Build the documentation.
+
+Install nox via `pip install nox`.
 
 ### Code Style and Linting
 
@@ -82,3 +90,4 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 ## Questions?
 
 Open an issue or contact Sina Esmaeili at sina.esmaeili@umontreal.ca.
+```

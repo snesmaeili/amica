@@ -13,7 +13,6 @@ Usage
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 
@@ -125,15 +124,15 @@ def _compute_pca(data, n_components):
 
 def fit_ica(
     inst,
-    n_components: Optional[int] = None,
+    n_components: int | None = None,
     max_iter: int = 2000,
     num_mix: int = 3,
-    random_state: Optional[int] = None,
+    random_state: int | None = None,
     picks=None,
     reject=None,
     flat=None,
     decim=None,
-    fit_params: Optional[dict] = None,
+    fit_params: dict | None = None,
     verbose=None,
 ):
     """Fit ICA using AMICA on MNE Raw or Epochs data.
@@ -181,8 +180,10 @@ def fit_ica(
     """
     try:
         from mne.preprocessing import ICA
-    except ImportError:
-        raise ImportError("MNE-Python is required for fit_ica(). Install with: pip install mne")
+    except ImportError as err:
+        raise ImportError(
+            "MNE-Python is required for fit_ica(). Install with: pip install mne"
+        ) from err
 
     from amica_python import Amica, AmicaConfig
 
@@ -276,7 +277,7 @@ def fit_ica(
     )
     if fit_params:
         cfg_kwargs.update(fit_params)
-    config = AmicaConfig(**cfg_kwargs)
+    config = AmicaConfig(**cfg_kwargs)  # type: ignore[arg-type]
 
     solver = Amica(config, random_state=random_state)
     result = solver.fit(data_for_amica)

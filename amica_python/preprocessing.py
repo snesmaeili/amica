@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Tuple
-
 import numpy as np
 
 from .backend import jax, jnp
@@ -49,11 +47,11 @@ def compute_covariance(data: jnp.ndarray, mean: jnp.ndarray) -> jnp.ndarray:
 
 def compute_sphering_matrix(
     cov: jnp.ndarray,
-    pcakeep: int = None,
+    pcakeep: int | None = None,
     mineig: float = 1e-12,
     do_approx: bool = True,
     sphere_type: str = "zca",
-) -> Tuple[jnp.ndarray, jnp.ndarray, int]:
+) -> tuple[jnp.ndarray, jnp.ndarray, int]:
     """Compute whitening/sphering matrix via eigendecomposition.
 
     The sphering matrix S transforms data such that:
@@ -209,13 +207,13 @@ def preprocess_data(
     data: np.ndarray,
     do_mean: bool = True,
     do_sphere: bool = True,
-    pcakeep: int = None,
+    pcakeep: int | None = None,
     mineig: float = 1e-12,
     do_approx: bool = True,
     sphere_type: str = "pca",
-    init_mean: np.ndarray = None,
-    init_sphere: np.ndarray = None,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, int, jnp.ndarray]:
+    init_mean: np.ndarray | None = None,
+    init_sphere: np.ndarray | None = None,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, int, jnp.ndarray]:
     """Full preprocessing pipeline for AMICA.
 
     Performs mean removal and sphering (whitening/PCA/ZCA) on input data.

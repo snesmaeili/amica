@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 from .backend import HAS_JAX, jax, jnp
 
 if HAS_JAX:
@@ -389,7 +387,7 @@ def compute_natural_gradient(
     y: jnp.ndarray,
     W: jnp.ndarray,
     lrate: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Compute natural gradient update for unmixing matrix W.
 
     The natural gradient update is:
@@ -436,7 +434,7 @@ def apply_full_newton_correction(
     sigma2: jnp.ndarray,
     kappa: jnp.ndarray,
     lambda_: jnp.ndarray,
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Apply full pairwise Newton correction to natural gradient update.
 
     Parameters
@@ -506,8 +504,8 @@ def update_all_pdf_params(
     beta: jnp.ndarray,
     rho: jnp.ndarray,
     config,
-    rholrate: Optional[float] = None,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    rholrate: float | None = None,
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Update all PDF parameters for all components.
 
     Fully vectorized using JAX vmap for GPU acceleration.
