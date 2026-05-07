@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import time
+import sys
 from pathlib import Path
 
 import mne
@@ -32,7 +33,10 @@ def load_data(dataset_name, subject_id, task=None):
             import openneuro
             openneuro.download(dataset="ds004505", target_dir=str(bids_root))
             
-        import sys
+        # If openneuro downloaded into a subfolder, adjust bids_root
+        if (bids_root / "ds004505").exists() and not (bids_root / "dataset_description.json").exists():
+            print(f"Adjusting bids_root to nested folder: {bids_root / 'ds004505'}", file=sys.stderr)
+            bids_root = bids_root / "ds004505"
         print(f"BIDS Root: {bids_root}", file=sys.stderr)
         if bids_root.exists():
             print(f"Files in root: {os.listdir(bids_root)}", file=sys.stderr)
