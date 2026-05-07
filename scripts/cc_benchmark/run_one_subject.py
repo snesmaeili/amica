@@ -32,8 +32,19 @@ def load_data(dataset_name, subject_id):
             import openneuro
             openneuro.download(dataset="ds004505", target_dir=str(bids_root))
             
-        print(f"Files in {bids_root}: {os.listdir(bids_root)}")
-        bids_path = BIDSPath(subject=f"{subject_id:02d}", task="dual", root=bids_root, datatype="eeg")
+        import sys
+        print(f"BIDS Root: {bids_root}", file=sys.stderr)
+        if bids_root.exists():
+            print(f"Files in root: {os.listdir(bids_root)}", file=sys.stderr)
+            from mne_bids import get_entity_vals
+            tasks = get_entity_vals(bids_root, "task")
+            print(f"Detected tasks: {tasks}", file=sys.stderr)
+            task = args.task if args.task else (tasks[0] if tasks else "dual")
+        else:
+            task = "dual"
+            
+        bids_path = BIDSPath(subject=f"{subject_id:02d}", task=task, root=bids_root, datatype="eeg")
+        print(f"Attempting to read: {bids_path}", file=sys.stderr)
         raw = read_raw_bids(bids_path)
         raw.load_data()
     else:
@@ -96,6 +107,7 @@ def main():
     parser.add_argument("--dataset", type=str, default="mne")
     parser.add_argument("--device", type=str, choices=["cpu", "gpu"], default="cpu")
     parser.add_argument("--backend", type=str, choices=["jax", "numpy"], default="jax")
+    parser.add_argument("--task", type=str, default=None)
     parser.add_argument("--n-iter", type=int, default=500)
     parser.add_argument("--output-dir", type=str, default="results")
     args = parser.parse_args()
