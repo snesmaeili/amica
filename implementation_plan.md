@@ -9,7 +9,6 @@ All code-level blockers (items 1–17 in `package_review.md`) are resolved and p
 
 | # | Item | Priority |
 |---|------|----------|
-| 13 | Add `CHANGELOG.md` — **MNE-style (towncrier)** | 🟡 High |
 | 18 | Multi-subject ds004505 ICLabel benchmark — **SLURM array job** on Compute Canada | 🟡 High |
 | 19 | Sphinx docs | 🟢 Post-release |
 | 23 | PyPI publish workflow | 🟢 Post-release |
@@ -22,37 +21,7 @@ All code-level blockers (items 1–17 in `package_review.md`) are resolved and p
 
 | Question | Answer |
 |----------|--------|
-| Changelog format | **MNE-style towncrier** with `changes/` fragment directory |
 | Benchmark execution | **SLURM array job** (`--array=1-25`) on Narval/Compute Canada |
-| Release version | **0.0.1** (pre-release) |
-| Python versions (CI matrix) | **3.10 – 3.14** |
-| Backend CI matrix | **JAX + NumPy** via `AMICA_NO_JAX` env var |
-| Test pattern | **Flat functions only** (no test classes) |
-
----
-
-## Sprint 2: CHANGELOG + Release Infra (Item 13)
-
-Follows the **MNE-Python changelog pattern**: `towncrier` + `changes/` fragment directory.
-
-### Changes
-
-#### [NEW] `CHANGELOG.md`
-MNE-style header with `<!-- towncrier release notes start -->` marker. First compiled entry is **`0.0.1` (pre-release)**.
-
-#### [NEW] `changes/` directory
-Towncrier fragment directory. Fragment types match MNE:
-- `changes/<issue>.enh.md` → Enhancements
-- `changes/<issue>.bugfix.md` → Bug Fixes
-- `changes/<issue>.api.md` → API Changes
-- `changes/<issue>.dep.md` → Dependencies
-- `changes/<issue>.authors.md` → Authors
-
-#### [MODIFY] `pyproject.toml`
-- Set version `0.0.1` (pre-release, Development Status :: 2 - Pre-Alpha)
-- Add `[tool.towncrier]` config block
-- Add `towncrier>=23.0` to `dev` extra
-- Add `--cov-fail-under=90` to `addopts` once coverage target is reached
 
 ---
 
