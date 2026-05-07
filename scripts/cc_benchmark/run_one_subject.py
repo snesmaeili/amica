@@ -13,7 +13,7 @@ from pathlib import Path
 import mne
 import numpy as np
 
-def load_data(dataset_name, subject_id):
+def load_data(dataset_name, subject_id, task=None):
     """Load data for a given dataset and subject."""
     if dataset_name == "mne":
         # Load MNE sample data
@@ -37,13 +37,13 @@ def load_data(dataset_name, subject_id):
         if bids_root.exists():
             print(f"Files in root: {os.listdir(bids_root)}", file=sys.stderr)
             from mne_bids import get_entity_vals
-            tasks = get_entity_vals(bids_root, "task")
-            print(f"Detected tasks: {tasks}", file=sys.stderr)
-            task = args.task if args.task else (tasks[0] if tasks else "dual")
+            detected_tasks = get_entity_vals(bids_root, "task")
+            print(f"Detected tasks: {detected_tasks}", file=sys.stderr)
+            selected_task = task if task else (detected_tasks[0] if detected_tasks else "dual")
         else:
-            task = "dual"
+            selected_task = "dual"
             
-        bids_path = BIDSPath(subject=f"{subject_id:02d}", task=task, root=bids_root, datatype="eeg")
+        bids_path = BIDSPath(subject=f"{subject_id:02d}", task=selected_task, root=bids_root, datatype="eeg")
         print(f"Attempting to read: {bids_path}", file=sys.stderr)
         raw = read_raw_bids(bids_path)
         raw.load_data()
@@ -119,7 +119,7 @@ def main():
     print(f"Processing {args.dataset} Subject {args.subject} | Backend: {args.backend} | Device: {args.device}...")
     
     try:
-        raw = load_data(args.dataset, args.subject)
+        raw = load_data(args.dataset, args.subject, task=args.task)
         raw = preprocess(raw)
         
         metrics = run_benchmark(raw, backend=args.backend, device=args.device, n_iter=args.n_iter)
