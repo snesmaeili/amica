@@ -26,7 +26,7 @@ ______________________________________________________________________
 
 ## Sprint 3: Compute Canada Benchmark (Item 18)
 
-**Executed as a SLURM array job on Narval/Béluga.**
+**Executed as a SLURM array job on FIR/Compute Canada.**
 
 ### What the MNE community is waiting for
 
@@ -38,10 +38,13 @@ ______________________________________________________________________
 
 ```
 scripts/cc_benchmark/
-├── submit_all.sh          # sbatch --array=1-25 launcher
+├── submit_numpy_cpu.sh    # NumPy + CPU
+├── submit_jax_cpu.sh      # JAX + CPU
+├── submit_jax_gpu.sh      # JAX + GPU (gres=gpu:1)
+├── submit_all.sh          # Helper to launch all three
 ├── run_one_subject.py     # per-subject pipeline
 ├── aggregate_results.py   # produces markdown table for MNE issue
-└── narval_env.sh          # module load python + venv activation
+└── fir_env.sh             # module load python + venv activation
 ```
 
 #### `submit_all.sh`
@@ -75,7 +78,7 @@ python run_one_subject.py --subject $SLURM_ARRAY_TASK_ID
 ### Pre-benchmark checklist
 
 1. Confirm `ds004505` path on Narval (`/scratch/$USER/ds004505`)
-1. `pip install mne-icalabel mne-bids` in the Narval venv
+1. `pip install mne-icalabel mne-bids` in the FIR venv
 1. Local dry-run: `python run_one_subject.py --subject 1 --max-iter 20`
 1. SLURM dry-run: `sbatch --array=1-2 submit_all.sh`
 1. Full run: `sbatch submit_all.sh`
@@ -84,31 +87,15 @@ ______________________________________________________________________
 
 ## Verification Plan
 
-### Sprint 1 (Coverage)
-
-```bash
-pip install -e ".[dev,mne,jax]"
-pytest tests/ --cov=amica_python --cov-report=term-missing
-# Target: ≥90% total (excl. binary.py)
-```
-
-### Sprint 2 (Release Infra)
-
-- `python -m build` succeeds (wheel + sdist)
-- `twine check dist/*` passes
-- CHANGELOG dates and version are consistent
-
 ### Sprint 3 (Benchmark)
 
 - Local dry run: 1 subject, 20 iterations
-- SLURM dry run: `--array=1-2`
-- Full run: `--array=1-25`
+- SLURM dry run: `--array=1` (32 CPUs)
+- Full run: `--array=1-25` (32 CPUs)
 - Results posted to MNE #13819
 
 ______________________________________________________________________
 
 ## Proposed Execution Order
 
-1. **Now**: Sprint 1 remainder — `test_config.py`, `test_metrics.py` extensions, `test_mne_integration.py`, `test_solver_paths.py`
-1. **After**: Sprint 2 (CHANGELOG + version bump) — ~30min
-1. **Compute Canada**: Sprint 3 (benchmark) — requires Narval access
+1. **Compute Canada**: Sprint 3 (benchmark) — requires FIR cluster access
