@@ -26,7 +26,7 @@ def load_data(dataset_name, subject_id):
     elif dataset_name == "ds004505":
         # Load from BIDS path (usually in /scratch/$USER/ on CC)
         from mne_bids import BIDSPath, read_raw_bids
-        bids_root = Path(os.environ.get("BIDS_ROOT_DS4505", "/scratch/datasets/ds004505"))
+        bids_root = Path(os.environ.get("BIDS_ROOT_DS4505", os.path.expandvars("/scratch/$USER/datasets/ds004505")))
         if not bids_root.exists():
             print(f"Dataset ds004505 not found at {bids_root}. Attempting download...")
             import openneuro

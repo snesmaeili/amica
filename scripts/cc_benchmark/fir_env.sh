@@ -27,7 +27,7 @@ if [ "$REINSTALL" = true ]; then
     
     # Install core dependencies from local checkout
     # Note: using --no-index where possible, but may need internet for some
-    pip install -e ".[all]"
+    pip install -e "../../[all]"
     
     # Install additional benchmarking dependencies
     pip install mne-icalabel mne-bids pandas openneuro-py
