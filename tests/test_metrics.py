@@ -1,17 +1,16 @@
 """Tests for AMICA component metrics."""
+
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from amica_python import metrics
 
 
 class MockAmicaResult:
     """Mock result object for fast metric testing."""
+
     def __init__(self, n_comp=4, n_mix=3, n_models=1):
-        rng = np.random.RandomState(42)
-        
         if n_models == 1:
             self.alpha_ = np.ones((n_mix, n_comp)) / n_mix
             self.rho_ = np.full((n_mix, n_comp), 1.5)
@@ -20,7 +19,7 @@ class MockAmicaResult:
             self.alpha_ = np.ones((n_models, n_mix, n_comp)) / n_mix
             self.rho_ = np.full((n_models, n_mix, n_comp), 1.5)
             self.unmixing_matrix_white_ = np.array([np.eye(n_comp) for _ in range(n_models)])
-            
+
         self.mean_ = np.zeros(n_comp)
         self.whitener_ = np.eye(n_comp)
         self.data_scale = 1.0
@@ -90,25 +89,25 @@ def test_multimodality_flag():
     res1 = MockAmicaResult(n_comp=2, n_mix=3, n_models=1)
     flags1 = metrics.multimodality_flag(res1)
     assert flags1.shape == (2,)
-    assert np.all(flags1 == True)
+    assert np.all(flags1)
 
     # Multi-model uniform
     res2 = MockAmicaResult(n_comp=2, n_mix=3, n_models=2)
     flags2 = metrics.multimodality_flag(res2)
     assert flags2.shape == (2,)
-    assert np.all(flags2 == True)
+    assert np.all(flags2)
 
     # 1-mix -> 0 entropy -> flag False
     res3 = MockAmicaResult(n_comp=2, n_mix=1, n_models=1)
     flags3 = metrics.multimodality_flag(res3)
     assert flags3.shape == (2,)
-    assert np.all(flags3 == False)
+    assert np.all(~flags3)
 
 
 def test_source_kurtosis():
     res = MockAmicaResult(n_comp=4, n_mix=1, n_models=1)
     rng = np.random.RandomState(42)
-    
+
     # Create Laplacian data (positive excess kurtosis)
     data = rng.laplace(size=(4, 1000))
     kurt = metrics.source_kurtosis(res, data)

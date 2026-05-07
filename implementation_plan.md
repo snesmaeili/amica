@@ -10,10 +10,8 @@ All code-level blockers (items 1–17 in `package_review.md`) are resolved and p
 | # | Item | Priority |
 |---|------|----------|
 | 18 | Multi-subject ds004505 ICLabel benchmark — **SLURM array job** on Compute Canada | 🟡 High |
-| 19 | Sphinx docs | 🟢 Post-release |
-| 23 | PyPI publish workflow | 🟢 Post-release |
 
-**Focus this sprint: Items 12 (remainder), 13, 18.**
+**Focus this sprint: Items 18.**
 
 ---
 

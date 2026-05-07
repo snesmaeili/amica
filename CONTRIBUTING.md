@@ -15,6 +15,7 @@ Thank you for your interest in contributing to amica-python! This document provi
    python -m venv .venv
    source .venv/bin/activate  # or .venv\Scripts\activate on Windows
    pip install -e ".[dev,mne,jax]"
+   pre-commit install
    ```
 4. Create a feature branch:
    ```bash
@@ -29,11 +30,13 @@ Thank you for your interest in contributing to amica-python! This document provi
 python -m pytest tests/ -v
 ```
 
-### Code Style
+### Code Style and Linting
 
-- Follow PEP 8 conventions
-- Use type hints for function signatures
-- Add docstrings in NumPy format for all public functions and classes
+- We use `ruff` for code formatting and linting. This is enforced via `pre-commit`.
+- Run `pre-commit run --all-files` locally before committing to ensure your code complies.
+- Follow PEP 8 conventions where applicable.
+- Use type hints for function signatures.
+- Add docstrings in NumPy format for all public functions and classes.
 
 ### Commit Messages
 
@@ -45,14 +48,14 @@ python -m pytest tests/ -v
 
 ### Bug Reports
 
-Open an issue on GitHub with:
+Please open an issue on GitHub using the **Bug report template**. Be sure to include:
 - A minimal reproducible example
 - Expected vs. actual behavior
 - Your environment (Python version, OS, JAX version if applicable)
 
 ### Feature Requests
 
-Open an issue describing:
+Please open an issue on GitHub using the **Feature request template**, describing:
 - The use case / motivation
 - Proposed API or behavior
 - Any relevant references (papers, other implementations)
@@ -61,8 +64,9 @@ Open an issue describing:
 
 1. Ensure your changes pass all existing tests
 2. Add tests for new functionality
-3. Update docstrings and documentation as needed
-4. Submit a pull request against the `main` branch
+3. Run `pre-commit` to ensure code style compliance
+4. Update docstrings and documentation as needed
+5. Submit a pull request against the `main` branch using the provided **Pull Request template**
 
 ### Validation and Benchmarks
 

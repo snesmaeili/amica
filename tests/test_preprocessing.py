@@ -1,4 +1,5 @@
 """Direct tests for amica_python.preprocessing."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -6,19 +7,24 @@ import pytest
 
 RNG = np.random.RandomState(42)
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 def _cov(data):
     from amica_python.preprocessing import compute_covariance
+
     return np.asarray(compute_covariance(data, data.mean(axis=1)))
+
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
+
 def test_compute_mean():
     from amica_python.preprocessing import compute_mean
+
     # Basic correct mean
     data = np.array([[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]])
     np.testing.assert_allclose(np.asarray(compute_mean(data)), [3.0, 4.0])
@@ -34,9 +40,10 @@ def test_compute_mean():
 
 def test_compute_covariance():
     from amica_python.preprocessing import compute_covariance
+
     data = RNG.randn(6, 500)
     cov = np.asarray(compute_covariance(data, data.mean(axis=1)))
-    
+
     # Shape and symmetry
     assert cov.shape == (6, 6)
     np.testing.assert_allclose(cov, cov.T, atol=1e-12)
@@ -49,7 +56,8 @@ def test_compute_covariance():
 
 
 def test_compute_sphering_matrix_standard():
-    from amica_python.preprocessing import compute_sphering_matrix, compute_dewhitening_matrix
+    from amica_python.preprocessing import compute_dewhitening_matrix, compute_sphering_matrix
+
     rng = np.random.RandomState(1)
     data = rng.randn(4, 5000)
     data[0] *= 3.0
@@ -58,7 +66,7 @@ def test_compute_sphering_matrix_standard():
     # Test default (ZCA)
     sphere, eigs, n_comp = compute_sphering_matrix(cov)
     assert n_comp == 4
-    
+
     # Check whitening property
     sphere_np = np.asarray(sphere)
     cov_white = sphere_np @ cov @ sphere_np.T
@@ -67,7 +75,7 @@ def test_compute_sphering_matrix_standard():
     # Check dewhitening (left inverse)
     desphere = np.asarray(compute_dewhitening_matrix(sphere, eigs, n_comp))
     np.testing.assert_allclose(sphere_np @ desphere, np.eye(4), atol=1e-8)
-    
+
     # Test PCA type and reduction
     sphere_pca, eigs_pca, n_comp_pca = compute_sphering_matrix(cov, sphere_type="pca", pcakeep=2)
     assert n_comp_pca == 2
@@ -75,13 +83,14 @@ def test_compute_sphering_matrix_standard():
 
 
 def test_compute_sphering_matrix_exceptions_and_edge_cases(monkeypatch):
-    from amica_python.preprocessing import compute_sphering_matrix
     import scipy.linalg as sla
-    
+
+    from amica_python.preprocessing import compute_sphering_matrix
+
     # Near rank 2 dataset -> mineig filtering
     rng = np.random.RandomState(7)
     data = rng.randn(4, 2000)
-    data[2:] = data[:2] + 1e-4 * rng.randn(2, 2000)  
+    data[2:] = data[:2] + 1e-4 * rng.randn(2, 2000)
     cov = _cov(data)
     _, _, n_comp = compute_sphering_matrix(cov, mineig=0.01)
     assert n_comp < 4
@@ -102,8 +111,9 @@ def test_compute_sphering_matrix_exceptions_and_edge_cases(monkeypatch):
     # LinAlgError fallback to SVD
     def fake_eigh(*args, **kwargs):
         raise np.linalg.LinAlgError("SVD did not converge")
+
     monkeypatch.setattr(sla, "eigh", fake_eigh)
-    
+
     sphere_fallback, _, n_comp_fallback = compute_sphering_matrix(cov_small)
     assert n_comp_fallback == 4
     assert np.asarray(sphere_fallback).shape == (4, 4)
@@ -111,15 +121,16 @@ def test_compute_sphering_matrix_exceptions_and_edge_cases(monkeypatch):
 
 def test_preprocess_data_flags():
     from amica_python.preprocessing import preprocess_data
+
     rng = np.random.RandomState(3)
     data = rng.randn(4, 10_000)
-    
+
     # Standard run
     white, mean, sphere, desphere, n_comp, eigs = preprocess_data(data)
     assert np.asarray(white).shape == (4, 10_000)
     assert np.asarray(mean).shape == (4,)
     assert np.all(np.asarray(eigs) > 0)
-    
+
     # Check whitening via covariance
     white_np = np.asarray(white)
     white_cov = white_np @ white_np.T / white_np.shape[1]
@@ -133,7 +144,7 @@ def test_preprocess_data_flags():
     # Overrides
     forced_mean = np.ones(4)
     forced_sphere = np.eye(4) * 2.0
-    
+
     _, mean_over, sphere_over, _, n_comp_over, _ = preprocess_data(
         data_shifted, init_mean=forced_mean, init_sphere=forced_sphere
     )
@@ -146,7 +157,7 @@ def test_preprocess_data_flags():
     )
     np.testing.assert_allclose(np.asarray(sphere_nos), np.eye(4))
     np.testing.assert_allclose(np.asarray(eigs_nos), np.ones(4))
-    
+
     # No sphering with pcakeep
     _, _, sphere_nosp_pca, _, n_comp_nosp_pca, _ = preprocess_data(
         data_shifted, do_sphere=False, pcakeep=2
@@ -164,10 +175,11 @@ def test_preprocess_data_flags():
 
 def test_apply_sphering_and_dewhitening():
     from amica_python.preprocessing import apply_sphering, compute_dewhitening_matrix
+
     data = RNG.randn(4, 1000)
     mean = data.mean(axis=1)
     sphere = np.eye(4) * 2
-    
+
     # apply_sphering
     res = apply_sphering(data, mean, sphere)
     assert np.asarray(res).shape == (4, 1000)
@@ -175,4 +187,4 @@ def test_apply_sphering_and_dewhitening():
     # compute_dewhitening_matrix
     sphere_diag = np.array([[2.0, 0.0], [0.0, 3.0]])
     desphere = compute_dewhitening_matrix(sphere_diag, np.array([4.0, 9.0]), 2)
-    np.testing.assert_allclose(np.asarray(desphere), [[0.5, 0.0], [0.0, 1/3]])
+    np.testing.assert_allclose(np.asarray(desphere), [[0.5, 0.0], [0.0, 1 / 3]])

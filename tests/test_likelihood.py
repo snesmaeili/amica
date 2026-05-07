@@ -1,14 +1,15 @@
 """Tests for amica_python.likelihood module."""
+
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 RNG = np.random.RandomState(42)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_params(n_comp=4, n_mix=3, n_samp=1000, rng=None):
     """Generate valid mock AMICA parameters for testing."""
@@ -27,6 +28,7 @@ def _make_params(n_comp=4, n_mix=3, n_samp=1000, rng=None):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_compute_log_det_W():
     from amica_python.backend import jnp
@@ -53,9 +55,9 @@ def test_compute_log_det_W():
 def test_model_and_average_loglikelihood():
     from amica_python.backend import jnp
     from amica_python.likelihood import (
+        compute_average_loglikelihood,
         compute_log_det_W,
         compute_model_loglikelihood,
-        compute_average_loglikelihood,
     )
 
     n_comp, n_samp = 4, 500
@@ -64,11 +66,15 @@ def test_model_and_average_loglikelihood():
 
     # Compute per-sample model log-likelihood
     sample_ll = compute_model_loglikelihood(
-        jnp.asarray(y), jnp.asarray(alpha), jnp.asarray(mu),
-        jnp.asarray(beta), jnp.asarray(rho),
-        log_det_W=log_det_W, log_det_sphere=0.0,
+        jnp.asarray(y),
+        jnp.asarray(alpha),
+        jnp.asarray(mu),
+        jnp.asarray(beta),
+        jnp.asarray(rho),
+        log_det_W=log_det_W,
+        log_det_sphere=0.0,
     )
-    
+
     # Verify shape and contents
     assert np.asarray(sample_ll).shape == (n_samp,)
     assert np.all(np.isfinite(np.asarray(sample_ll)))
@@ -81,16 +87,22 @@ def test_model_and_average_loglikelihood():
 
 def test_total_loglikelihood_and_chunks():
     from amica_python.backend import jnp
-    from amica_python.likelihood import compute_total_loglikelihood, compute_loglik_chunk
+    from amica_python.likelihood import compute_loglik_chunk, compute_total_loglikelihood
 
     rng = np.random.RandomState(10)
     n_comp, n_samp = 4, 10_000
     y, W, alpha, mu, beta, rho = _make_params(n_comp=n_comp, n_samp=n_samp, rng=rng)
 
     # Total LL
-    args = (jnp.asarray(y), jnp.asarray(W), jnp.asarray(alpha),
-            jnp.asarray(mu), jnp.asarray(beta), jnp.asarray(rho))
-    
+    args = (
+        jnp.asarray(y),
+        jnp.asarray(W),
+        jnp.asarray(alpha),
+        jnp.asarray(mu),
+        jnp.asarray(beta),
+        jnp.asarray(rho),
+    )
+
     ll_full_0 = float(compute_total_loglikelihood(*args, log_det_sphere=0.0))
     ll_full_1 = float(compute_total_loglikelihood(*args, log_det_sphere=1.0))
 
@@ -100,13 +112,21 @@ def test_total_loglikelihood_and_chunks():
 
     # Test chunk additivity
     ll_h1, n1 = compute_loglik_chunk(
-        jnp.asarray(y[:, :5000]), jnp.asarray(W), jnp.asarray(alpha),
-        jnp.asarray(mu), jnp.asarray(beta), jnp.asarray(rho),
+        jnp.asarray(y[:, :5000]),
+        jnp.asarray(W),
+        jnp.asarray(alpha),
+        jnp.asarray(mu),
+        jnp.asarray(beta),
+        jnp.asarray(rho),
         log_det_sphere=0.3,
     )
     ll_h2, n2 = compute_loglik_chunk(
-        jnp.asarray(y[:, 5000:]), jnp.asarray(W), jnp.asarray(alpha),
-        jnp.asarray(mu), jnp.asarray(beta), jnp.asarray(rho),
+        jnp.asarray(y[:, 5000:]),
+        jnp.asarray(W),
+        jnp.asarray(alpha),
+        jnp.asarray(mu),
+        jnp.asarray(beta),
+        jnp.asarray(rho),
         log_det_sphere=0.3,
     )
     assert float(n1) == 5000
@@ -114,7 +134,7 @@ def test_total_loglikelihood_and_chunks():
 
     ll_merged = float((ll_h1 + ll_h2) / (n1 + n2) / n_comp)
     ll_full_chunked = float(compute_total_loglikelihood(*args, log_det_sphere=0.3))
-    
+
     rel_err = abs(ll_full_chunked - ll_merged) / max(abs(ll_full_chunked), 1e-20)
     assert rel_err < 1e-10
 
@@ -127,7 +147,7 @@ def test_multimodel_loglikelihood():
     n_comp = 4
     n_mix = 3
     n_samp = 500
-    
+
     rng = np.random.RandomState(42)
     y_all = rng.randn(n_models, n_comp, n_samp)
     W_all = np.array([np.eye(n_comp) for _ in range(n_models)])
@@ -140,9 +160,15 @@ def test_multimodel_loglikelihood():
     data_white = rng.randn(n_comp, n_samp)
 
     ll = compute_multimodel_loglikelihood(
-        jnp.asarray(y_all), jnp.asarray(W_all), jnp.asarray(alpha_all),
-        jnp.asarray(mu_all), jnp.asarray(beta_all), jnp.asarray(rho_all),
-        jnp.asarray(gm), jnp.asarray(c_all), jnp.asarray(data_white),
-        log_det_sphere=0.1
+        jnp.asarray(y_all),
+        jnp.asarray(W_all),
+        jnp.asarray(alpha_all),
+        jnp.asarray(mu_all),
+        jnp.asarray(beta_all),
+        jnp.asarray(rho_all),
+        jnp.asarray(gm),
+        jnp.asarray(c_all),
+        jnp.asarray(data_white),
+        log_det_sphere=0.1,
     )
     assert np.isfinite(float(ll))

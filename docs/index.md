@@ -3,6 +3,10 @@
 ```{toctree}
 :hidden:
 
+examples
+explanation
+faq
+contributing
 api
 ```
 

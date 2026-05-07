@@ -1,8 +1,10 @@
 """Tests for amica_python.config module."""
+
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from amica_python.config import AmicaConfig
 

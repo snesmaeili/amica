@@ -1,6 +1,8 @@
 """Tests for amica-python package."""
-import pytest
+
 import numpy as np
+import pytest
+
 
 def test_fit_random_data():
     """Test basic fitting on random data."""
@@ -24,6 +26,7 @@ def test_fit_random_data():
     assert result.mixing_matrix_sensor_.shape == (n_channels, n_channels)
     assert len(result.log_likelihood) > 0
 
+
 def test_transform_inverse():
     """Test that transform + inverse_transform reconstructs data."""
     from amica_python import Amica, AmicaConfig
@@ -42,8 +45,9 @@ def test_transform_inverse():
     recon = model.inverse_transform(sources)
     assert recon.shape == (n_channels, n_samples)
 
-    err = np.mean((data - recon) ** 2) / np.mean(data ** 2)
+    err = np.mean((data - recon) ** 2) / np.mean(data**2)
     assert err < 1e-6, f"Reconstruction NRMSE too high: {err:.2e}"
+
 
 def test_ll_increases():
     """Test that log-likelihood generally increases over iterations."""
@@ -63,11 +67,11 @@ def test_ll_increases():
     ll = result.log_likelihood
     assert len(ll) > 10
     # LL at end should be higher than at start (allowing some tolerance)
-    assert ll[-1] > ll[5], \
-                       "Log-likelihood should increase over training"
+    assert ll[-1] > ll[5], "Log-likelihood should increase over training"
 
 
 """Test the Picard-compatible functional API."""
+
 
 def test_amica_function():
     """Test amica() functional API returns correct shapes."""
@@ -80,6 +84,7 @@ def test_amica_function():
 
     W = amica(X, max_iter=20, num_mix=2)
     assert W.shape == (n_components, n_components)
+
 
 def test_amica_return_n_iter():
     """Test return_n_iter flag."""
@@ -95,6 +100,7 @@ def test_amica_return_n_iter():
 
 
 """Test actual source separation quality."""
+
 
 def test_separate_laplacian_sources():
     """Test separation of known Laplacian sources."""
@@ -115,7 +121,7 @@ def test_separate_laplacian_sources():
     result = model.fit(X)
 
     # Recover sources
-    S_hat = model.transform(X)
+    _ = model.transform(X)
 
     # Check Amari index (permutation-invariant separation quality)
     # Perfect separation: each row/col of W @ A_true has one dominant entry
@@ -128,11 +134,11 @@ def test_separate_laplacian_sources():
     col_ratios = np.sum(np.abs(C), axis=0) / np.max(np.abs(C), axis=0) - 1
     amari = (np.mean(row_ratios) + np.mean(col_ratios)) / 2
 
-    assert amari < 0.3, \
-                    f"Amari index too high ({amari:.3f}), poor separation"
+    assert amari < 0.3, f"Amari index too high ({amari:.3f}), poor separation"
 
 
 """Test explicit matrix naming and consistency."""
+
 
 def test_matrix_shapes_and_consistency():
     """Test all four matrices have correct shapes and are consistent."""
@@ -149,16 +155,12 @@ def test_matrix_shapes_and_consistency():
     result = model.fit(data)
 
     # White-space matrices are square (n_comp x n_comp)
-    assert result.unmixing_matrix_white_.shape == \
-                     (n_channels, n_channels)
-    assert result.mixing_matrix_white_.shape == \
-                     (n_channels, n_channels)
+    assert result.unmixing_matrix_white_.shape == (n_channels, n_channels)
+    assert result.mixing_matrix_white_.shape == (n_channels, n_channels)
 
     # Sensor-space matrices bridge channels and components
-    assert result.unmixing_matrix_sensor_.shape == \
-                     (n_channels, n_channels)
-    assert result.mixing_matrix_sensor_.shape == \
-                     (n_channels, n_channels)
+    assert result.unmixing_matrix_sensor_.shape == (n_channels, n_channels)
+    assert result.mixing_matrix_sensor_.shape == (n_channels, n_channels)
 
     # W_white @ A_white ≈ I
     WA = result.unmixing_matrix_white_ @ result.mixing_matrix_white_
@@ -166,13 +168,12 @@ def test_matrix_shapes_and_consistency():
 
     # sensor unmixing = W_white @ sphere
     expected_sensor = result.unmixing_matrix_white_ @ result.whitener_
-    np.testing.assert_allclose(
-        result.unmixing_matrix_sensor_, expected_sensor, atol=1e-10)
+    np.testing.assert_allclose(result.unmixing_matrix_sensor_, expected_sensor, atol=1e-10)
 
     # sensor mixing = desphere @ A_white
     expected_mix = result.dewhitener_ @ result.mixing_matrix_white_
-    np.testing.assert_allclose(
-        result.mixing_matrix_sensor_, expected_mix, atol=1e-10)
+    np.testing.assert_allclose(result.mixing_matrix_sensor_, expected_mix, atol=1e-10)
+
 
 def test_sensor_roundtrip():
     """Test mixing_sensor @ unmixing_sensor ≈ I for full-rank data."""
@@ -191,13 +192,13 @@ def test_sensor_roundtrip():
     np.testing.assert_allclose(product, np.eye(n_channels), atol=1e-6)
 
 
-
-
 """Test configuration validation."""
+
 
 def test_defaults():
     """Test default config values match literature recommendations."""
     from amica_python import AmicaConfig
+
     cfg = AmicaConfig()
     assert cfg.max_iter == 2000
     assert cfg.num_mix_comps == 3
@@ -207,9 +208,11 @@ def test_defaults():
     assert cfg.rejint == 3
     assert cfg.rejsig == 3.0
 
+
 def test_invalid_config():
     """Test that invalid config raises errors."""
     from amica_python import AmicaConfig
+
     with pytest.raises(ValueError):
         AmicaConfig(num_models=0)
     with pytest.raises(ValueError):
@@ -219,6 +222,7 @@ def test_invalid_config():
 
 
 """Test sample rejection feature."""
+
 
 def test_rejection_enabled():
     """Test that rejection runs without errors when enabled."""
@@ -249,6 +253,7 @@ def test_rejection_enabled():
 
 """Test MNE-Python integration."""
 
+
 def test_fit_ica_on_raw():
     """Test fit_ica produces a working MNE ICA object."""
     try:
@@ -271,9 +276,14 @@ def test_fit_ica_on_raw():
     data = rng.randn(n_channels, n_samples) * 1e-6  # Volts
     raw = mne.io.RawArray(data, info)
 
-    ica = fit_ica(raw, n_components=4, max_iter=20,
-                  num_mix=2, random_state=42,
-                  fit_params={"do_newton": False})
+    ica = fit_ica(
+        raw,
+        n_components=4,
+        max_iter=20,
+        num_mix=2,
+        random_state=42,
+        fit_params={"do_newton": False},
+    )
 
     assert ica.n_components_ == 4
     assert ica.method == "amica"
@@ -286,6 +296,7 @@ def test_fit_ica_on_raw():
 
 """Test that direct path matches old Infomax shim path."""
 
+
 def test_direct_vs_shim_sources_correlated():
     """Both paths should produce correlated source activations."""
     try:
@@ -297,14 +308,18 @@ def test_direct_vs_shim_sources_correlated():
 
     info = mne.create_info(
         ch_names=[f"EEG{i:03d}" for i in range(6)],
-        sfreq=256, ch_types="eeg",
+        sfreq=256,
+        ch_types="eeg",
     )
     rng = np.random.RandomState(42)
     data = rng.randn(6, 3000) * 1e-6
     raw = mne.io.RawArray(data, info)
 
     common_params = dict(
-        n_components=3, max_iter=30, num_mix=2, random_state=42,
+        n_components=3,
+        max_iter=30,
+        num_mix=2,
+        random_state=42,
         fit_params={"do_newton": False},
     )
     ica_direct = fit_ica(raw.copy(), **common_params)
@@ -317,11 +332,11 @@ def test_direct_vs_shim_sources_correlated():
     corr = np.abs(np.corrcoef(src_direct, src_shim)[:3, 3:])
     # Each direct source should match some shim source
     max_corrs = np.max(corr, axis=1)
-    assert np.all(max_corrs > 0.9), \
-        f"Source correlation too low: {max_corrs}"
+    assert np.all(max_corrs > 0.9), f"Source correlation too low: {max_corrs}"
 
 
 """Test MNE integration guards and metadata."""
+
 
 def test_multi_model_raises():
     """fit_ica() with num_models > 1 should raise ValueError."""
@@ -335,14 +350,15 @@ def test_multi_model_raises():
     sfreq = 256
     info = mne.create_info(
         ch_names=[f"EEG{i:03d}" for i in range(4)],
-        sfreq=sfreq, ch_types="eeg",
+        sfreq=sfreq,
+        ch_types="eeg",
     )
     rng = np.random.RandomState(42)
     raw = mne.io.RawArray(rng.randn(4, 1000) * 1e-6, info)
 
     with pytest.raises(ValueError, match="single-model AMICA"):
-        fit_ica(raw, n_components=2, max_iter=10,
-                fit_params={"num_models": 2, "do_newton": False})
+        fit_ica(raw, n_components=2, max_iter=10, fit_params={"num_models": 2, "do_newton": False})
+
 
 def test_amica_result_attached():
     """fit_ica() should attach amica_result_ to the ICA object."""
@@ -355,15 +371,16 @@ def test_amica_result_attached():
 
     info = mne.create_info(
         ch_names=[f"EEG{i:03d}" for i in range(4)],
-        sfreq=256, ch_types="eeg",
+        sfreq=256,
+        ch_types="eeg",
     )
     rng = np.random.RandomState(42)
     raw = mne.io.RawArray(rng.randn(4, 1000) * 1e-6, info)
 
-    ica = fit_ica(raw, n_components=2, max_iter=10,
-                  fit_params={"do_newton": False})
+    ica = fit_ica(raw, n_components=2, max_iter=10, fit_params={"do_newton": False})
     assert hasattr(ica, "amica_result_")
     assert ica.amica_result_ is not None
+
 
 def test_apply_preserves_shape():
     """ica.apply() should preserve data shape."""
@@ -376,26 +393,29 @@ def test_apply_preserves_shape():
 
     info = mne.create_info(
         ch_names=[f"EEG{i:03d}" for i in range(4)],
-        sfreq=256, ch_types="eeg",
+        sfreq=256,
+        ch_types="eeg",
     )
     rng = np.random.RandomState(42)
     data = rng.randn(4, 1000) * 1e-6
     raw = mne.io.RawArray(data, info)
 
-    ica = fit_ica(raw, n_components=2, max_iter=10,
-                  fit_params={"do_newton": False})
+    ica = fit_ica(raw, n_components=2, max_iter=10, fit_params={"do_newton": False})
     raw_clean = ica.apply(raw.copy())
     assert raw_clean.get_data().shape == data.shape
 
 
 """Chunked E-step should match full-batch within float64 rounding."""
 
+
 def test_chunked_loglik_additivity():
     """sum(compute_loglik_chunk) across halves == compute_total_loglikelihood."""
     from amica_python.backend import jnp
     from amica_python.likelihood import (
-        compute_total_loglikelihood, compute_loglik_chunk,
+        compute_loglik_chunk,
+        compute_total_loglikelihood,
     )
+
     rng = np.random.RandomState(0)
     n_comp, n_mix, n_samp = 4, 3, 10000
     y = rng.randn(n_comp, n_samp)
@@ -405,23 +425,38 @@ def test_chunked_loglik_additivity():
     beta = np.ones((n_mix, n_comp)) + 0.05 * rng.randn(n_mix, n_comp)
     rho = np.full((n_mix, n_comp), 1.5)
 
-    ll_full = float(compute_total_loglikelihood(
-        jnp.asarray(y), jnp.asarray(W), jnp.asarray(alpha),
-        jnp.asarray(mu), jnp.asarray(beta), jnp.asarray(rho),
-        log_det_sphere=0.3,
-    ))
+    ll_full = float(
+        compute_total_loglikelihood(
+            jnp.asarray(y),
+            jnp.asarray(W),
+            jnp.asarray(alpha),
+            jnp.asarray(mu),
+            jnp.asarray(beta),
+            jnp.asarray(rho),
+            log_det_sphere=0.3,
+        )
+    )
     ll_h1, n1 = compute_loglik_chunk(
-        jnp.asarray(y[:, :5000]), jnp.asarray(W), jnp.asarray(alpha),
-        jnp.asarray(mu), jnp.asarray(beta), jnp.asarray(rho),
+        jnp.asarray(y[:, :5000]),
+        jnp.asarray(W),
+        jnp.asarray(alpha),
+        jnp.asarray(mu),
+        jnp.asarray(beta),
+        jnp.asarray(rho),
         log_det_sphere=0.3,
     )
     ll_h2, n2 = compute_loglik_chunk(
-        jnp.asarray(y[:, 5000:]), jnp.asarray(W), jnp.asarray(alpha),
-        jnp.asarray(mu), jnp.asarray(beta), jnp.asarray(rho),
+        jnp.asarray(y[:, 5000:]),
+        jnp.asarray(W),
+        jnp.asarray(alpha),
+        jnp.asarray(mu),
+        jnp.asarray(beta),
+        jnp.asarray(rho),
         log_det_sphere=0.3,
     )
     ll_merged = float((ll_h1 + ll_h2) / (n1 + n2) / n_comp)
     assert abs(ll_full - ll_merged) < 1e-12
+
 
 def test_chunked_matches_fullbatch_synthetic():
     """Chunked vs full-batch: W and LL agree within rounding after 50 iters."""
@@ -429,34 +464,34 @@ def test_chunked_matches_fullbatch_synthetic():
 
     rng = np.random.RandomState(42)
     n_src, n_samp = 4, 5000
-    srcs = np.stack([
-        rng.laplace(size=n_samp),
-        rng.standard_t(df=3, size=n_samp),
-        rng.laplace(size=n_samp) * 1.5,
-        np.sign(rng.randn(n_samp)) * rng.exponential(size=n_samp),
-    ])[:n_src]
+    srcs = np.stack(
+        [
+            rng.laplace(size=n_samp),
+            rng.standard_t(df=3, size=n_samp),
+            rng.laplace(size=n_samp) * 1.5,
+            np.sign(rng.randn(n_samp)) * rng.exponential(size=n_samp),
+        ]
+    )[:n_src]
     srcs = srcs / srcs.std(axis=1, keepdims=True)
     A_true = rng.randn(n_src, n_src)
     A_true = A_true / np.linalg.norm(A_true, axis=0, keepdims=True)
     x = A_true @ srcs
 
-    cfg_kw = dict(num_models=1, num_mix_comps=3, max_iter=50,
-                  dtype="float64", pcakeep=n_src)
-    res_full = Amica(AmicaConfig(**cfg_kw, chunk_size=None),
-                     random_state=42).fit(x)
-    res_chunk = Amica(AmicaConfig(**cfg_kw, chunk_size=1024),
-                      random_state=42).fit(x)
+    cfg_kw = dict(num_models=1, num_mix_comps=3, max_iter=50, dtype="float64", pcakeep=n_src)
+    res_full = Amica(AmicaConfig(**cfg_kw, chunk_size=None), random_state=42).fit(x)
+    res_chunk = Amica(AmicaConfig(**cfg_kw, chunk_size=1024), random_state=42).fit(x)
 
     W_full = np.asarray(res_full.unmixing_matrix_white_)
     W_chunk = np.asarray(res_chunk.unmixing_matrix_white_)
     rel_err = np.max(np.abs(W_chunk - W_full)) / np.max(np.abs(W_full))
-    assert rel_err < 1e-4, \
-        f"Chunked W diverged from full-batch: rel_err={rel_err:.2e}"
+    assert rel_err < 1e-4, f"Chunked W diverged from full-batch: rel_err={rel_err:.2e}"
 
     ll_full = float(np.asarray(res_full.log_likelihood)[-1])
     ll_chunk = float(np.asarray(res_chunk.log_likelihood)[-1])
-    assert abs(ll_full - ll_chunk) < 1e-5, \
+    assert abs(ll_full - ll_chunk) < 1e-5, (
         f"Final LL diverged: full={ll_full:.8f} chunk={ll_chunk:.8f}"
+    )
+
 
 @pytest.fixture
 def tiny_data():
@@ -468,6 +503,7 @@ def tiny_data():
 def test_newton_path(tiny_data):
     """Test the full Newton correction path."""
     from amica_python import Amica, AmicaConfig
+
     config = AmicaConfig(
         do_newton=True,
         newt_start=1,
@@ -482,6 +518,7 @@ def test_newton_path(tiny_data):
 def test_chunked_path(tiny_data):
     """Test accumulator path with time-axis chunking and Newton."""
     from amica_python import Amica, AmicaConfig
+
     config = AmicaConfig(
         chunk_size=5,  # Smaller than n_samples (20)
         max_iter=2,
@@ -496,6 +533,7 @@ def test_chunked_path(tiny_data):
 def test_chunked_path_no_updates(tiny_data):
     """Test accumulator path with no parameter updates."""
     from amica_python import Amica, AmicaConfig
+
     config = AmicaConfig(
         chunk_size=5,
         max_iter=1,
@@ -513,6 +551,7 @@ def test_chunked_path_no_updates(tiny_data):
 def test_float32_dtype(tiny_data):
     """Test float32 precision mode."""
     from amica_python import Amica, AmicaConfig
+
     config = AmicaConfig(dtype="float32", max_iter=2)
     solver = Amica(config, random_state=42)
     res = solver.fit(tiny_data)
@@ -523,6 +562,7 @@ def test_float32_dtype(tiny_data):
 def test_pcakeep_reduces_components(tiny_data):
     """Test pcakeep reduces the component count."""
     from amica_python import Amica, AmicaConfig
+
     config = AmicaConfig(pcakeep=2, max_iter=2)
     solver = Amica(config, random_state=42)
     res = solver.fit(tiny_data)
@@ -534,19 +574,20 @@ def test_pcakeep_reduces_components(tiny_data):
 def test_fit_transform_and_inverse(tiny_data):
     """Test fit_transform output matches fit().transform() and inverse_transform works."""
     from amica_python import Amica, AmicaConfig
+
     config = AmicaConfig(max_iter=2)
     solver1 = Amica(config, random_state=42)
     sources1 = solver1.fit_transform(tiny_data)
-    
+
     solver2 = Amica(config, random_state=42)
     solver2.fit(tiny_data)
     sources2 = solver2.transform(tiny_data)
-    
+
     np.testing.assert_allclose(sources1, sources2)
-    
+
     reconstructed = solver2.inverse_transform(sources2)
     assert reconstructed.shape == tiny_data.shape
-    
+
     # Test unfitted error
     unfitted = Amica(config)
     with pytest.raises(RuntimeError):
@@ -560,6 +601,7 @@ def test_fit_transform_and_inverse(tiny_data):
 def test_multimodel_raises(tiny_data):
     """Test multi-model initialization raises NotImplementedError."""
     from amica_python import Amica, AmicaConfig
+
     config = AmicaConfig(num_models=2, max_iter=2)
     solver = Amica(config, random_state=42)
     with pytest.raises(NotImplementedError):
@@ -569,21 +611,22 @@ def test_multimodel_raises(tiny_data):
 def test_checkpoint_save_load(tiny_data, tmp_path):
     """Test writing checkpoints and reloading."""
     from amica_python import Amica, AmicaConfig
+
     config = AmicaConfig(
         outdir=tmp_path / "amica_out",
         max_iter=3,
-        writestep=1  # Write every iteration
+        writestep=1,  # Write every iteration
     )
     solver = Amica(config, random_state=42)
     res_orig = solver.fit(tiny_data)
-    
+
     # Load from checkpoint
     solver_loaded = Amica.load(tmp_path / "amica_out")
     res_loaded = solver_loaded.result_
-    
+
     # Compare
     np.testing.assert_allclose(res_loaded.unmixing_matrix_white_, res_orig.unmixing_matrix_white_)
-    
+
     # Test load missing dir
     with pytest.raises(FileNotFoundError):
         Amica.load(tmp_path / "nonexistent")
@@ -597,16 +640,17 @@ def test_checkpoint_save_load(tiny_data, tmp_path):
 def test_checkpoint_load_partial(tiny_data, tmp_path):
     """Test loading a directory where some optional files are missing."""
     from amica_python import Amica, AmicaConfig
+
     config = AmicaConfig(max_iter=2)
     solver = Amica(config, random_state=42)
     solver.fit(tiny_data)
     solver.save(tmp_path / "amica_out2")
-    
+
     # Delete optional files
     for fname in ["S", "A", "mean", "c", "alpha", "mu", "rho", "sbeta", "gm", "LL"]:
         if (tmp_path / "amica_out2" / fname).exists():
             (tmp_path / "amica_out2" / fname).unlink()
-            
+
     solver_loaded = Amica.load(tmp_path / "amica_out2")
     res = solver_loaded.result_
     # Should fallback to defaults
@@ -619,6 +663,7 @@ def test_checkpoint_load_partial(tiny_data, tmp_path):
 def test_rejection_path(tiny_data):
     """Test outlier rejection path."""
     from amica_python import Amica, AmicaConfig
+
     config = AmicaConfig(
         do_reject=True,
         rejstart=1,
@@ -634,43 +679,44 @@ def test_rejection_path(tiny_data):
 def test_amica_wrapper(tiny_data):
     """Test the Picard-style amica() wrapper function."""
     from amica_python.solver import amica
-    
+
     # Needs samples x components (transpose of tiny_data)
     X = tiny_data.T
-    
+
     W, n_iter = amica(X, max_iter=2, return_n_iter=True, random_state=42)
     assert W.shape == (4, 4)
     assert n_iter == 2
-    
+
     W2 = amica(X, max_iter=1, return_n_iter=False)
     assert W2.shape == (4, 4)
 
 
 def test_result_to_mne(tiny_data):
     """Test AmicaResult.to_mne(info) method."""
-    from amica_python import Amica, AmicaConfig
     import sys
     from unittest.mock import MagicMock
-    
+
+    from amica_python import Amica, AmicaConfig
+
     # Mock MNE so we don't need real raw
     mne_mock = MagicMock()
     sys.modules["mne"] = mne_mock
-    
+
     class MockICA:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
-            
+
     mne_prep_mock = MagicMock()
     mne_prep_mock.ICA = MockICA
     sys.modules["mne.preprocessing"] = mne_prep_mock
-    
+
     config = AmicaConfig(max_iter=2)
     solver = Amica(config, random_state=42)
     res = solver.fit(tiny_data)
-    
+
     mock_info = {"ch_names": ["EEG1", "EEG2", "EEG3", "EEG4"]}
     ica = res.to_mne(mock_info)
-    
+
     assert ica.method == "amica"
     assert ica.n_components_ == 4
 
@@ -678,11 +724,12 @@ def test_result_to_mne(tiny_data):
 def test_solver_init_paths(tiny_data):
     """Test solver initialization paths with fixed init and initial params."""
     from amica_python import Amica, AmicaConfig
+
     # Test fix_init
     config1 = AmicaConfig(fix_init=True, max_iter=1)
     solver1 = Amica(config1, random_state=42)
     solver1.fit(tiny_data)
-    
+
     # Test init_weights and init_params
     W_init = np.eye(4)
     params = {

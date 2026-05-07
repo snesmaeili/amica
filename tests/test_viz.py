@@ -1,9 +1,10 @@
 """Tests for amica_python.viz module."""
+
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
-import matplotlib.pyplot as plt
 
 from amica_python import viz
 
@@ -11,23 +12,25 @@ from amica_python import viz
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class MockAmicaResult:
     """Mock result object containing attributes needed for visualization."""
+
     def __init__(self, n_comp=4, n_mix=3, n_models=1):
         rng = np.random.RandomState(42)
-        
+
         self.alpha_ = np.ones((n_mix, n_comp)) / n_mix
         self.mu_ = rng.randn(n_mix, n_comp) * 0.1
         self.sbeta_ = np.ones((n_mix, n_comp)) + 0.5
         self.rho_ = np.full((n_mix, n_comp), 1.5)
         self.log_likelihood = np.linspace(-10, -5, 50).tolist()
         self.elapsed_times = np.linspace(0.1, 5.0, 50).tolist()
-        
+
         self.mean_ = np.zeros(n_comp)
         self.whitener_ = np.eye(n_comp)
         self.unmixing_matrix_white_ = np.eye(n_comp)
         self.data_scale = 1.0
-        
+
         # Multi-model specific
         self.gm_ = np.ones(n_models) / n_models
         if n_models > 1:
@@ -45,7 +48,7 @@ def test_check_result():
 
     class BadResult:
         pass
-    
+
     with pytest.raises(TypeError, match="missing attribute 'alpha_'"):
         viz._check_result(BadResult())
 
@@ -69,7 +72,7 @@ def test_plot_convergence(monkeypatch):
 def test_plot_source_densities(monkeypatch):
     monkeypatch.setattr(plt, "show", lambda: None)
     res = MockAmicaResult(n_comp=4, n_mix=3)
-    
+
     # Test without data
     fig = viz.plot_source_densities(res, show=True)
     assert isinstance(fig, plt.Figure)
@@ -153,10 +156,10 @@ def test_plot_component_metrics(monkeypatch):
     monkeypatch.setattr(plt, "show", lambda: None)
     res = MockAmicaResult(n_comp=2, n_mix=2)
     # Mocking metrics required attributes
-    res.alpha_ = np.array([[0.1, 0.9], [0.9, 0.1]]) # 2 mix, 2 comp
+    res.alpha_ = np.array([[0.1, 0.9], [0.9, 0.1]])  # 2 mix, 2 comp
     res.rho_ = np.array([[1.5, 1.8], [1.1, 1.9]])
     res.unmixing_matrix_white_ = np.eye(2)
-    
+
     # without data
     fig = viz.plot_component_metrics(res, show=True)
     assert isinstance(fig, plt.Figure)

@@ -19,7 +19,6 @@ from __future__ import annotations
 from typing import NamedTuple
 
 from .backend import jax, jnp
-
 from .likelihood import compute_log_det_W, compute_source_loglikelihood
 from .pdf import compute_responsibilities
 
