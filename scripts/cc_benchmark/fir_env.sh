@@ -31,20 +31,18 @@ export AMICA_RESULTS_DIR="$RESULTS_DIR"
 mkdir -p "$RESULTS_DIR"
 
 # ── Virtual environment ──
-if [ -n "$SLURM_TMPDIR" ]; then
-    # Running on cluster node: use local SSD for speed
-    VENV_PATH="$SLURM_TMPDIR/venv"
-    REINSTALL=true
-else
-    # Running locally: use persistent venv
-    VENV_PATH="./.venv_fir"
-    REINSTALL=false
-    if [ ! -d "$VENV_PATH" ]; then REINSTALL=true; fi
-fi
-
-# Get the repo root (two levels up from scripts/cc_benchmark/)
+# Use a persistent venv in the repo root (created on the login node with internet)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+VENV_PATH="$REPO_ROOT/.venv_fir"
+
+if [ ! -d "$VENV_PATH" ]; then
+    REINSTALL=true
+else
+    REINSTALL=false
+fi
+
+
 
 if [ "$REINSTALL" = true ]; then
     echo "Setting up virtual environment at $VENV_PATH..."
