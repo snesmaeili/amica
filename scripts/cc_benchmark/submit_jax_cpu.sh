@@ -11,8 +11,7 @@
 # JAX CPU benchmark: all 25 subjects of ds004505
 # JAX CPU should be faster than NumPy, so shorter time limit.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SLURM_SUBMIT_DIR"
 
 source fir_env.sh
 python run_one_subject.py \

@@ -24,8 +24,8 @@ Thank you for your interest in contributing to amica-python! This document provi
 
 ## Development Workflow
 
+```bash
 python -m pytest tests/ -v
-
 ```
 
 ### Using Nox

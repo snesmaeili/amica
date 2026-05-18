@@ -10,8 +10,7 @@
 # Smoke test: MNE sample dataset, NumPy CPU, 50 iterations
 # Purpose: validate the full pipeline works before scaling up.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SLURM_SUBMIT_DIR"
 
 source fir_env.sh
 python run_one_subject.py --subject 1 --dataset mne --backend numpy --device cpu --n-iter 50

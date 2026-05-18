@@ -24,6 +24,12 @@ Extras: `jax` (JAX backend), `mne` (MNE-Python integration), `dev` (testing).
 
 ## Usage
 
+The fastest way to get started is to look at our fully commented examples in the `examples/` directory:
+- [**MNE Integration** (`examples/01_mne_integration.py`)](examples/01_mne_integration.py): Shows how to load EEG data, filter it, and run AMICA using the MNE `fit_ica()` wrapper.
+- [**Pure JAX Fitting** (`examples/02_pure_jax_fitting.py`)](examples/02_pure_jax_fitting.py): Shows how to configure the core `AmicaConfig` and run hardware-accelerated fitting directly on numpy arrays.
+
+### Core API Quickstart
+
 ```python
 from amica_python import Amica, AmicaConfig
 
@@ -33,7 +39,9 @@ result = model.fit(data)  # (n_channels, n_samples)
 sources = model.transform(data)
 ```
 
-MNE-Python — `fit_ica` returns a standard `mne.preprocessing.ICA` object, so all MNE ICA methods work out of the box:
+### MNE-Python Integration
+
+`fit_ica` returns a standard `mne.preprocessing.ICA` object, so all MNE methods work out of the box:
 
 ```python
 from amica_python import fit_ica
@@ -43,7 +51,9 @@ ica.plot_components()
 ica.apply(raw)
 ```
 
-Picard-compatible functional API for direct use in MNE's ICA pipeline:
+### Picard-compatible Functional API
+
+For drop-in replacement in custom ICA pipelines:
 
 ```python
 from amica_python import amica

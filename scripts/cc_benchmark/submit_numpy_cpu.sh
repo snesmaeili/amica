@@ -11,8 +11,7 @@
 # NumPy CPU benchmark: all 25 subjects of ds004505
 # Each array task handles one subject.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$SLURM_SUBMIT_DIR"
 
 source fir_env.sh
 python run_one_subject.py \
