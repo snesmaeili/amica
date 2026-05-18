@@ -32,7 +32,8 @@ export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 
 # ── Results directory ──
-RESULTS_DIR="/project/rrg-kjerbi/projects/amica_python_validation/outputs"
+# Temporarily pointing to scratch because the team /project quota is full!
+RESULTS_DIR="/scratch/$USER/amica_python_validation_outputs"
 export AMICA_RESULTS_DIR="$RESULTS_DIR"
 mkdir -p "$RESULTS_DIR"
 
