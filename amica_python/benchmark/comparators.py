@@ -199,6 +199,114 @@ def comparator_output_filename(subject: int, method: str, hp_freq: float):
     return f"benchmark_sub-{subject:02d}_hp{float(hp_freq):.1f}hz_{method}_cpu.json"
 
 
+def fit_all_on_raw(
+    raw,
+    *,
+    subject: int,
+    n_components: int,
+    random_state: int = 42,
+    methods=("picard", "fastica", "infomax"),
+    max_iter: int = DEFAULT_MAX_ITER,
+    tols=None,
+    fit_params_override=None,
+    out_dir,
+    hp_freq: float = 1.0,
+    input_metadata=None,
+    runner_module=None,
+):
+    """Fit each comparator method on the *same* preprocessed Raw, write JSON + ica.fif.
+
+    The Raw passed in is assumed to already be preprocessed (channel selection,
+    filtering, notching, optional cropping/resampling done). This is the
+    canonical entry point for comparing Picard / FastICA / Infomax against an
+    AMICA fit produced from the same input.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Preprocessed Raw — bit-identical to what AMICA was fit on.
+    subject : int
+        Subject number (used for output filenames).
+    n_components : int
+        Number of components to fit. Match the AMICA fit.
+    random_state : int, default 42
+        Seed.
+    methods : iterable of str, default ('picard', 'fastica', 'infomax')
+        Subset of comparators to fit.
+    max_iter : int
+        Shared iteration ceiling. Defaults to ``DEFAULT_MAX_ITER`` (5000).
+    tols : dict[str, float], optional
+        Per-method tolerance override; otherwise ``DEFAULT_TOL`` is used
+        (picard/fastica use ``tol``, infomax uses ``w_change``).
+    fit_params_override : dict[str, dict], optional
+        Per-method ``fit_params`` overrides; otherwise ``DEFAULT_FIT_PARAMS``.
+    out_dir : path-like
+        Directory the v3 JSON + ``_ica.fif`` sidecar will be written to.
+    hp_freq : float, default 1.0
+        High-pass cutoff (only used in the output filename).
+    input_metadata : dict, optional
+        Pre-built metadata block to splice into the v3 document. If omitted,
+        ``runner.build_input_metadata(raw)`` is called.
+    runner_module : module, optional
+        Override for the runner module (typically left as default).
+
+    Returns
+    -------
+    dict[str, dict]
+        Mapping of method name -> the v3 document written to disk.
+    """
+    runner = load_runner() if runner_module is None else runner_module
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if input_metadata is None:
+        input_metadata = runner.build_input_metadata(raw)
+    tols = dict(tols or {})
+    fit_params_override = dict(fit_params_override or {})
+
+    written: dict[str, dict] = {}
+    for method in methods:
+        method = method.lower()
+        if method not in DEFAULT_FIT_PARAMS:
+            raise ValueError(f"Unknown comparator method: {method!r}")
+        t0 = time.perf_counter()
+        kwargs = {"max_iter": int(max_iter)}
+        if method in ("picard", "fastica"):
+            kwargs["tol"] = float(tols.get(method, DEFAULT_TOL[method]))
+        else:
+            kwargs["w_change"] = float(tols.get(method, DEFAULT_TOL[method]))
+        if method in fit_params_override:
+            kwargs["fit_params_override"] = dict(fit_params_override[method])
+        ica, elapsed, used_fp = fit_mne_ica(
+            raw, method, n_components, random_state, **kwargs)
+
+        metrics = build_metrics(
+            runner, raw, ica, method, elapsed, n_components,
+            max_iter=int(max_iter),
+            tol=used_fp.get("tol"),
+            w_change=used_fp.get("w_change"),
+            fit_params=used_fp,
+        )
+        metrics["dataset"] = input_metadata.get("dataset", "ds004505")
+        metrics["subject"] = f"sub-{int(subject):02d}"
+        metrics.update(input_metadata)
+
+        doc = runner.build_v3_document(
+            raw=raw, input_metadata=input_metadata, method_metrics=metrics,
+            dataset=metrics["dataset"], subject=int(subject),
+            backend=method, device="cpu", hp_freq=float(hp_freq),
+        )
+        payload = doc.pop("amica")
+        doc[method] = payload
+
+        json_path = out_dir / comparator_output_filename(int(subject), method, float(hp_freq))
+        json_path.write_text(json.dumps(doc, indent=4), encoding="utf-8")
+        ica.save(json_path.with_name(json_path.stem + "_ica.fif"),
+                 overwrite=True, verbose="WARNING")
+        written[method] = doc
+        print(f"[{method}] {time.perf_counter() - t0:.1f}s -> {json_path.name}")
+    return written
+
+
 def run_tolerance_sweep(
     raw,
     method: str,

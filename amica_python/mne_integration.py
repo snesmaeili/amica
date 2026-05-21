@@ -282,14 +282,17 @@ def fit_ica(
     solver = Amica(config, random_state=random_state)
     result = solver.fit(data_for_amica)
 
-    W = result.unmixing_matrix_white_  # (n_comp, n_comp)
+    W = result.unmixing_matrix_white_  # (n_comp, n_comp), operates on data_for_amica
 
-    # Step 5: Undo per-component normalization
+    # Step 5: undo per-component unit-variance normalisation applied at line ~269.
+    # AMICA was fed pca_data / comp_stds; recovering the unmixer for unwhitened
+    # pca_data requires dividing each column j of W by comp_stds[j].
+    # MNE's _transform computes sources = unmixing_matrix_ @ pca_components_ @ centered_data
+    # i.e. unmixing_matrix_ must operate on unwhitened X_pca = pca_components_ @ centered_data
+    # (the sqrt(eigvals) factor is *not* applied here — MNE bakes it into
+    # unmixing_matrix_ at fit time only for backends that receive whitened input,
+    # which AMICA does not).
     W_corrected = W / comp_stds.squeeze()[np.newaxis, :]
-
-    # MNE convention: unmixing /= sqrt(pca_explained_variance_)
-    norms = np.sqrt(pca_explained_variance[:n_comp])
-    norms[norms == 0] = 1.0
 
     # Step 6: Construct MNE ICA object with all required attributes
     # MNE validates method at __init__ — use 'infomax' placeholder, override below
@@ -307,9 +310,10 @@ def fit_ica(
     ica.pca_mean_ = pca_mean
     ica.pca_explained_variance_ = pca_explained_variance
 
-    # ICA decomposition
+    # ICA decomposition (W_corrected operates on unwhitened X_pca — same convention
+    # as MNE's stored unmixing_matrix_ for picard/fastica/infomax post-fit).
     ica.n_components_ = n_comp
-    ica.unmixing_matrix_ = W_corrected / norms
+    ica.unmixing_matrix_ = W_corrected
     ica.mixing_matrix_ = np.linalg.pinv(ica.unmixing_matrix_)
 
     # Metadata

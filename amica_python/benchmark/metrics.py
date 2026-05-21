@@ -369,29 +369,22 @@ def remnant_pmi(
 # Helpers for hooking the metric functions onto an mne.preprocessing.ICA
 # ---------------------------------------------------------------------------
 
-def mne_ica_unmixing_matrix(ica) -> np.ndarray:
-    """Return the W_eff applied to the **whitened** input that produces sources.
+def unmixing_from_ica(ica) -> np.ndarray:
+    """Return the unmixing matrix for an ``mne.preprocessing.ICA`` fit.
 
-    For `mne.preprocessing.ICA`, the unmixing is composed as
-        W_eff = unmixing_matrix_ @ pca_components_
-    and operates on mean-centered (not whitened) channel data. For benchmark
-    MIR purposes you usually want W in the retained whitened subspace; this
-    helper returns the raw unmixing matrix that maps PCA-whitened scores to
-    sources -- square in the retained rank space.
-
-    If `ica` is the wrapper around AMICA-Python's fit (no whitening separation),
-    we fall back to `ica.get_components()`'s pseudo-inverse mapped onto the
-    available PCA components.
+    For MNE's stored convention this is ``ica.unmixing_matrix_`` directly --
+    square in the retained PCA rank space, operating on unwhitened
+    ``X_pca = pca_components_ @ centered_data``. Falls back to
+    ``pinv(ica.get_components())`` for wrappers that don't expose
+    ``unmixing_matrix_``.
     """
     if hasattr(ica, "unmixing_matrix_") and ica.unmixing_matrix_ is not None:
-        # mne.preprocessing.ICA: unmixing_matrix_ is (n_comp, n_comp_pca), already square
         return np.asarray(ica.unmixing_matrix_, dtype=float)
-    # Fallback for the amica_python wrapper -- compute pseudo-inverse of mixing.
-    mixing = np.asarray(ica.get_components(), dtype=float)  # (n_channels, n_components)
+    mixing = np.asarray(ica.get_components(), dtype=float)
     return np.linalg.pinv(mixing)
 
 
-def _mne_ica_pca_inputs(ica, raw):
+def pca_inputs_from_ica(ica, raw):
     """Return (X_pca, W_square) for an mne.preprocessing.ICA in retained rank space.
 
     MNE stores the **full** PCA basis in ``pca_components_`` (shape n_ch × n_ch)
@@ -441,6 +434,11 @@ def _mne_ica_pca_inputs(ica, raw):
     return X_pca, unmixing
 
 
+# Back-compat aliases for callers that used the older names.
+mne_ica_unmixing_matrix = unmixing_from_ica
+_mne_ica_pca_inputs = pca_inputs_from_ica
+
+
 def complete_mir_from_ica(
     raw,
     ica,
@@ -476,7 +474,7 @@ def complete_mir_from_ica(
     downstream report as "MIR in retained rank space" -- do not compare
     full-rank AMICA MIR against this without flagging the subspace.
     """
-    X_pca, W_raw = _mne_ica_pca_inputs(ica, raw)
+    X_pca, W_raw = pca_inputs_from_ica(ica, raw)
     Y_raw = W_raw @ X_pca
     # Gauge sources to unit variance per row, propagate the rescaling into W
     # so the |det| term stays consistent. MIR is invariant analytically; this

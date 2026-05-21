@@ -547,7 +547,24 @@ def compute_v3_artifacts(ica, raw):
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*ICLabel.*")
             labels = label_components(raw, ica, method="iclabel")
-        label_names = list(labels["labels"])
+        # mne-icalabel returns class names like "muscle artifact", "channel noise",
+        # "eye blink", "line noise", "heart beat" — normalise to the canonical
+        # single-token names we use in the JSON / downstream figures.
+        ICLABEL_CANONICAL = {
+            "brain": "brain",
+            "muscle artifact": "muscle",
+            "muscle": "muscle",
+            "eye blink": "eye",
+            "eye": "eye",
+            "heart beat": "heart",
+            "heart": "heart",
+            "line noise": "line_noise",
+            "line_noise": "line_noise",
+            "channel noise": "channel_noise",
+            "channel_noise": "channel_noise",
+            "other": "other",
+        }
+        label_names = [ICLABEL_CANONICAL.get(str(x).lower(), "other") for x in labels["labels"]]
         probs = np.asarray(labels["y_pred_proba"], dtype=float)
         counts = {
             cls: int(sum(1 for label in label_names if label == cls))
@@ -829,8 +846,82 @@ def compute_v3_artifacts(ica, raw):
     return artifacts
 
 
-def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, include_artifacts=False, return_ica=False):
+def reaggregate_from_ica(json_path, ica_path, raw, *,
+                         out_path=None, preserve_keys=None):
+    """Recompute ICLabel / MIR / PMI / kurtosis / PSD blocks from an existing ica.fif.
+
+    Useful when the underlying fit is still valid but downstream artifacts need to
+    be regenerated against new code (e.g. fixing a label-normalisation bug, or
+    recomputing entropies after an estimator change). The fit itself is *not* re-run.
+
+    Parameters
+    ----------
+    json_path : path-like
+        The v3 document to patch (e.g. ``benchmark_sub-01_hp1.0hz_jax_gpu.json``).
+    ica_path : path-like
+        The corresponding fitted ICA file (``ica.fif``).
+    raw : mne.io.Raw
+        The exact preprocessed Raw the fit was produced on. Caller is responsible
+        for ensuring this matches the original input (load / window / preprocess).
+    out_path : path-like, optional
+        Where to write the patched document. Defaults to ``json_path`` with the
+        suffix ``_fixed.json``.
+    preserve_keys : iterable of str, optional
+        Top-level method-block keys to preserve from the original (fit-time metadata
+        that must not be overwritten by recomputation). Defaults to the convergence
+        + runtime + fit_config + dipolarity tuple, which depends on the fit, not on
+        the post-hoc artifacts.
+
+    Returns
+    -------
+    pathlib.Path
+        Path to the written document.
+    """
+    import mne
+
+    json_path = Path(json_path)
+    ica_path = Path(ica_path)
+    if out_path is None:
+        out_path = json_path.with_name(json_path.stem + "_fixed.json")
+    out_path = Path(out_path)
+    if preserve_keys is None:
+        preserve_keys = {
+            "runtime_s", "n_iter", "max_iter", "converged_before_cap",
+            "log_likelihood", "iteration_times", "reconstruction_error",
+            "convergence", "fit_config", "n_components", "backend", "device",
+            "dipolarity",
+        }
+
+    ica = mne.preprocessing.read_ica(str(ica_path), verbose="ERROR")
+    new_artifacts = compute_v3_artifacts(ica, raw)
+
+    doc = json.loads(json_path.read_text(encoding="utf-8"))
+    method_key = next(
+        (k for k in ("amica", "picard", "fastica", "infomax") if k in doc),
+        "amica",
+    )
+    old_block = doc.get(method_key, {})
+    new_block = {k: old_block[k] for k in old_block if k in preserve_keys}
+    new_block.update(new_artifacts)
+    new_block["_provenance"] = {
+        "patched_from": json_path.name,
+        "ica_fif_used": ica_path.name,
+        "patched_at": datetime.now(timezone.utc).isoformat(),
+    }
+    doc[method_key] = new_block
+    out_path.write_text(json.dumps(doc, indent=4), encoding="utf-8")
+    return out_path
+
+
+def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
+                  n_components: int | None = None, include_artifacts=False, return_ica=False):
     """Run AMICA and record metrics.
+
+    Parameters
+    ----------
+    n_components : int, optional
+        Number of ICs to keep. Defaults to ``min(64, n_channels)``. Pass a
+        smaller value (e.g. 32) to reduce GPU VRAM use on consumer GPUs.
 
     If return_ica=True, returns (metrics, ica) so the caller can persist an
     `ica.fif` sidecar next to the JSON for downstream notebook/figure use.
@@ -841,7 +932,10 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, include_artifact
     per-iter log-likelihood only; MIR / PMI columns are filled with NaN by
     the aggregator. See plan Step 5.
     """
-    n_components = min(64, len(raw.ch_names))
+    if n_components is None:
+        n_components = min(64, len(raw.ch_names))
+    else:
+        n_components = int(min(n_components, len(raw.ch_names)))
 
     # Set environment variables for backend and device
     os.environ["AMICA_NO_JAX"] = "1" if backend == "numpy" else "0"
@@ -887,7 +981,10 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, include_artifact
         "slurm_job_id": os.environ.get("SLURM_JOB_ID", "local"),
     }
 
-    # Try ICLabel if available
+    # Try ICLabel if available. Wrap broadly so any failure (missing onnxruntime,
+    # missing channel positions, etc.) doesn't kill the run after a successful fit.
+    # The authoritative ICLabel block lives in compute_v3_artifacts() and records
+    # its own errors; this is the legacy decoration with iclabel_*_mean_prob keys.
     try:
         import warnings
         from mne_icalabel import label_components
@@ -896,8 +993,8 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, include_artifact
             labels = label_components(raw, ica, method="iclabel")
         for label, prob in zip(labels["labels"], labels["y_pred_proba"]):
             metrics[f"iclabel_{label}_mean_prob"] = float(np.mean(prob))
-    except ImportError:
-        pass
+    except Exception as exc:
+        metrics["iclabel_legacy_error"] = str(exc)
 
     if include_artifacts:
         metrics.update(compute_v3_artifacts(ica, raw))

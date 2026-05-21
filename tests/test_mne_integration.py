@@ -139,6 +139,58 @@ def test_fit_ica_basic(AmicaMock, mock_mne_modules):
     assert ica.mixing_matrix_.shape == (4, 4)
 
 
+@patch("amica_python.Amica")
+def test_fit_ica_stores_unmixer_for_unwhitened_pca(AmicaMock, mock_mne_modules):
+    """Regression: ica.unmixing_matrix_ must operate on unwhitened X_pca.
+
+    MNE's _transform computes sources = unmixing_matrix_ @ pca_components_ @ centered_data
+    so the stored unmixing_matrix_ acts on unwhitened PCA-projected data, not on
+    whitened data. A previous bug also divided by sqrt(pca_explained_variance_),
+    which mis-scaled sources by ~sqrt(eigvals) per column and inflated log2|det W|
+    by tens of bits on EEG-like spectra. This test pins the correct convention:
+    when AMICA returns the identity for unit-variance-normalised input, the stored
+    unmixer must equal diag(1/comp_stds), so the resulting sources have unit variance.
+    """
+    rng = np.random.default_rng(0)
+    # Construct data with well-separated PCA eigenvalues so the bug would be visible.
+    n_ch, n_samp = 4, 4000
+    sources = rng.standard_normal((n_ch, n_samp))
+    # Per-row scaling -> known eigenvalues 16, 4, 1, 0.25 (each row already orthogonal)
+    sources *= np.array([4.0, 2.0, 1.0, 0.5])[:, None]
+    raw = MockRaw(data=sources)
+
+    mock_result = MagicMock(spec=AmicaResult)
+    mock_result.unmixing_matrix_white_ = np.eye(n_ch)  # AMICA finds no rotation
+    mock_result.n_iter = 1
+    mock_solver = MagicMock()
+    mock_solver.fit.return_value = mock_result
+    AmicaMock.return_value = mock_solver
+
+    ica = mne_integration.fit_ica(raw, n_components=n_ch, max_iter=1)
+
+    # Replicate MNE's _transform: sources = unmixing_matrix_ @ pca_components_ @ centered_data
+    data = raw.get_data() / ica.pre_whitener_
+    data_centered = data - ica.pca_mean_[:, None]
+    X_pca = ica.pca_components_[:n_ch] @ data_centered
+    Y = ica.unmixing_matrix_ @ X_pca
+
+    # With W_white = I and the correct convention, sources are pca_data / comp_stds,
+    # which is by construction unit variance per row.
+    src_std = Y.std(axis=1)
+    assert np.allclose(src_std, 1.0, atol=0.05), (
+        f"Sources should have unit variance after fit_ica with W_white=I, got std={src_std}"
+    )
+
+    # log2|det W| with the bug would equal 2*sum(log2(eigvals)) too negative
+    # (off by exactly that factor). With the fix, log2|det| should be tractable.
+    _, logdet = np.linalg.slogdet(ica.unmixing_matrix_)
+    log2_abs_det = logdet / np.log(2.0)
+    # diag(1/comp_stds) -> det = prod(1/comp_stds); |log2 det| <= ~5 for eigvals 16..0.25.
+    assert abs(log2_abs_det) < 10.0, (
+        f"log2|det unmixing| = {log2_abs_det:.2f} suggests double /sqrt(eigvals) bug returned"
+    )
+
+
 def test_fit_ica_multimodel_raises():
     with pytest.raises(ValueError, match="only supports single-model AMICA"):
         mne_integration.fit_ica(MockRaw(), fit_params={"num_models": 2})

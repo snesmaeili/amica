@@ -231,7 +231,7 @@ def test_Y_equals_W_at_X_numerically():
     pytest.importorskip("mne")
     pytest.importorskip("picard")
     import mne
-    from amica_python.benchmark.metrics import _mne_ica_pca_inputs
+    from amica_python.benchmark.metrics import pca_inputs_from_ica
 
     rng = np.random.default_rng(12)
     n_ch = 5
@@ -242,7 +242,7 @@ def test_Y_equals_W_at_X_numerically():
                                 fit_params={"ortho": False, "extended": True},
                                 max_iter=500, random_state=0)
     ica.fit(raw, verbose="ERROR")
-    X_pca, W_square = _mne_ica_pca_inputs(ica, raw)
+    X_pca, W_square = pca_inputs_from_ica(ica, raw)
     Y_reconstructed = W_square @ X_pca
     Y_from_ica = ica.get_sources(raw).get_data()
     # MNE returns sources in possibly different per-row scale; verify Y == W @ X
@@ -329,7 +329,7 @@ def test_amica_and_mne_use_same_pca_xspace():
     pytest.importorskip("amica_python")
     import mne
     import os
-    from amica_python.benchmark.metrics import _mne_ica_pca_inputs
+    from amica_python.benchmark.metrics import pca_inputs_from_ica
 
     rng = np.random.default_rng(21)
     n_ch = 6
@@ -346,7 +346,7 @@ def test_amica_and_mne_use_same_pca_xspace():
                                        fit_params={"ortho": False, "extended": True},
                                        max_iter=1000, random_state=0)
     ica_picard.fit(raw, verbose="ERROR")
-    X_pca_picard, _ = _mne_ica_pca_inputs(ica_picard, raw)
+    X_pca_picard, _ = pca_inputs_from_ica(ica_picard, raw)
 
     # AMICA-Python (NumPy CPU; light fit just to get pca_components_)
     os.environ["AMICA_NO_JAX"] = "1"
@@ -355,7 +355,7 @@ def test_amica_and_mne_use_same_pca_xspace():
     importlib.reload(amica_python.backend)
     from amica_python import fit_ica
     ica_amica = fit_ica(raw, n_components=n_ch, max_iter=20, random_state=0)
-    X_pca_amica, _ = _mne_ica_pca_inputs(ica_amica, raw)
+    X_pca_amica, _ = pca_inputs_from_ica(ica_amica, raw)
 
     # PCA whitening is unique up to a sign per component, so check that the
     # absolute row correlations are ~ 1 between the two PCA bases.

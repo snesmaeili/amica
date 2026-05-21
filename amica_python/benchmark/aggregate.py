@@ -245,6 +245,77 @@ def iteration_trace_rows(run: RunPayload):
     return rows
 
 
+def summary_table(results_dir, subject=None, *, prefer_fixed=True):
+    """Quick 4-way comparison table from a results directory.
+
+    Loads every ``benchmark_sub-XX_hp*_<method>.json`` (or the matching
+    ``_fixed.json`` when ``prefer_fixed=True``), pulls the headline columns,
+    and returns a tidy DataFrame ready for ``DataFrame.to_string`` or
+    ``display``.
+
+    Parameters
+    ----------
+    results_dir : path-like
+        Directory containing the per-method JSONs.
+    subject : int, optional
+        Filter to a single subject. Default: all subjects in the directory.
+    prefer_fixed : bool, default True
+        When both ``*.json`` and ``*_fixed.json`` exist for a method, use the
+        ``_fixed`` variant.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns: ``method, subject, kappa_effective, runtime_s, n_iter,
+        mir_kbits_s, log2_abs_det_W, remnant_pmi_percent, brain, muscle, eye,
+        other, channel_noise``.
+    """
+    results_dir = Path(results_dir)
+    json_paths = sorted(results_dir.glob("benchmark_sub-*.json"))
+    if prefer_fixed:
+        fixed_stems = {p.stem.removesuffix("_fixed") for p in json_paths if p.stem.endswith("_fixed")}
+        json_paths = [p for p in json_paths if not (p.stem in fixed_stems and not p.stem.endswith("_fixed"))]
+    rows = []
+    for jp in json_paths:
+        if "_ica.fif" in jp.name:
+            continue
+        try:
+            doc = json.loads(jp.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        data = doc.get("_data", {}) or {}
+        sub = data.get("subject")
+        if subject is not None and sub != f"sub-{int(subject):02d}":
+            continue
+        method_key = next(
+            (k for k in ("amica", "picard", "fastica", "infomax") if k in doc),
+            None,
+        )
+        if method_key is None:
+            continue
+        block = doc.get(method_key, {}) or {}
+        cm = block.get("complete_mir", {}) or {}
+        pmi = block.get("pmi", {}) or {}
+        icl = block.get("iclabel", {}) or {}
+        method_label = METHOD_DISPLAY.get(f"{block.get('backend', method_key)}_{block.get('device', 'cpu')}", method_key)
+        rows.append({
+            "method": method_label,
+            "subject": sub,
+            "kappa_effective": float(data.get("kappa_effective", float("nan"))),
+            "runtime_s": float(block.get("runtime_s", float("nan"))),
+            "n_iter": int(block.get("n_iter", 0) or 0),
+            "mir_kbits_s": cm.get("kbits_per_sec", float("nan")) if "error" not in cm else float("nan"),
+            "log2_abs_det_W": cm.get("log2_abs_det_W", float("nan")) if "error" not in cm else float("nan"),
+            "remnant_pmi_percent": pmi.get("remnant_PMI_percent", float("nan")) if "error" not in pmi else float("nan"),
+            "brain": int(icl.get("brain", 0)) if "error" not in icl else 0,
+            "muscle": int(icl.get("muscle", 0)) if "error" not in icl else 0,
+            "eye": int(icl.get("eye", 0)) if "error" not in icl else 0,
+            "other": int(icl.get("other", 0)) if "error" not in icl else 0,
+            "channel_noise": int(icl.get("channel_noise", 0)) if "error" not in icl else 0,
+        })
+    return pd.DataFrame(rows).sort_values(["subject", "method"]).reset_index(drop=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results-dir", required=True, type=Path)

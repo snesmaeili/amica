@@ -39,7 +39,16 @@ viz          Plotting suite (Delorme/Frank-style + per-subject diagnostics + hea
 """
 from __future__ import annotations
 
-from . import metrics, schema, viz, dipolarity  # noqa: F401
+from . import (  # noqa: F401
+    aggregate,
+    comparators,
+    dipolarity,
+    legacy,
+    metrics,
+    runner,
+    schema,
+    viz,
+)
 
 # Convenience re-exports — top-level alias so users don't have to remember submodules.
 from .metrics import (
@@ -50,7 +59,8 @@ from .metrics import (
     entropy_histogram,
     remnant_pmi,
     kappa,
-    mne_ica_unmixing_matrix,
+    unmixing_from_ica,
+    pca_inputs_from_ica,
     CompleteMIR,
 )
 from .schema import (
@@ -67,10 +77,14 @@ from .schema import (
 
 __all__ = [
     # subpackages / submodules
+    "aggregate",
+    "comparators",
+    "dipolarity",
+    "legacy",
     "metrics",
+    "runner",
     "schema",
     "viz",
-    "dipolarity",
     # metric functions (top-level convenience aliases)
     "complete_mir",
     "complete_mir_from_ica",
@@ -79,7 +93,8 @@ __all__ = [
     "entropy_histogram",
     "remnant_pmi",
     "kappa",
-    "mne_ica_unmixing_matrix",
+    "unmixing_from_ica",
+    "pca_inputs_from_ica",
     "CompleteMIR",
     # schema
     "BENCHMARK_RESULTS_COLUMNS",

@@ -16,7 +16,8 @@ cd "$SLURM_SUBMIT_DIR"
 
 source fir_env.sh
 
-export AMICA_N_ITER="${AMICA_N_ITER:-2000}"
+export AMICA_N_ITER="${AMICA_N_ITER:-3000}"
+export AMICA_COMPUTE_DIPOLES="${AMICA_COMPUTE_DIPOLES:-1}"
 export AMICA_RESULTS_DIR="${V3_RESULTS_DIR:-/scratch/$USER/amica_python_validation_v3}"
 mkdir -p "$AMICA_RESULTS_DIR"
 
