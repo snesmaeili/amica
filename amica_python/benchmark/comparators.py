@@ -407,7 +407,11 @@ def main() -> None:
     parser.add_argument(
         "--runner-path",
         type=str,
-        default=str(Path(__file__).resolve().parent / "run_one_subject.py"),
+        default=None,
+        help=(
+            "Optional path to a standalone run_one_subject.py script "
+            "(legacy CLI shim). Default: use amica_python.benchmark.runner."
+        ),
     )
     args = parser.parse_args()
 
@@ -418,7 +422,7 @@ def main() -> None:
         )
     os.environ["BIDS_ROOT_DS4505"] = args.bids_root
 
-    runner = load_runner(Path(args.runner_path))
+    runner = load_runner(Path(args.runner_path) if args.runner_path else None)
     DEFAULT_HP_FREQ = runner.DEFAULT_HP_FREQ
 
     methods = ["picard", "fastica", "infomax"] if args.method == "all" else [args.method]
