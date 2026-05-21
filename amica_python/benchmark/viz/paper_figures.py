@@ -259,7 +259,15 @@ def plot_quality_summary(
         y_label = "ICLabel brain % (proxy, NOT dipolarity)"
         proxy_label = "ICLabel proxy: NOT dipolarity"
 
-    by_method = bench_df.set_index("method")
+    # Multi-subject support: aggregate per method (mean across subjects), so
+    # the Frank 2022 R^2 regression is on method centroids (one dot per method)
+    # not per (method, subject) pair.
+    numeric_cols = ["mir_kbits_s", "remnant_pmi_percent", "fit_runtime_s"]
+    by_method = (
+        bench_df[["method", *numeric_cols]]
+        .groupby("method", sort=False)
+        .mean(numeric_only=True)
+    )
     methods = [m for m in by_method.index if pd.notna(nd_pct.get(m))]
     if not methods:
         return None, "no methods with both MIR/PMI and near-dipolar data"
