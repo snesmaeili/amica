@@ -56,6 +56,172 @@ def _color_for(method: str) -> str:
     return METHOD_COLORS.get(method, "#444444")
 
 
+def _display_method_name(method: str) -> str:
+    """Short labels that remain readable on paper figures."""
+    labels = {
+        "AMICA-Python (JAX-GPU)": "AMICA JAX-GPU",
+        "AMICA-Python (NumPy-CPU)": "AMICA NumPy-CPU",
+        "AMICA-Python": "AMICA",
+    }
+    return labels.get(str(method), str(method))
+
+
+def _combine_display_labels(labels: list[str]) -> str:
+    if len(labels) > 1 and all(label.startswith("AMICA ") for label in labels):
+        return "AMICA " + " / ".join(label.replace("AMICA ", "", 1) for label in labels)
+    return " / ".join(labels)
+
+
+def _method_summary(bench_df: pd.DataFrame) -> pd.DataFrame:
+    """Across-subject method means for paper figures."""
+    group_cols = [c for c in ("method", "backend", "device") if c in bench_df.columns]
+    numeric_cols = [
+        c
+        for c in (
+            "mir_kbits_s",
+            "remnant_pmi_percent",
+            "fit_runtime_s",
+            "iclabel_brain_percent",
+            "n_iter_actual",
+            "max_iter",
+        )
+        if c in bench_df.columns
+    ]
+    if not group_cols or not numeric_cols:
+        return pd.DataFrame()
+
+    grouped = bench_df[group_cols + numeric_cols].groupby(group_cols, sort=False, dropna=False)
+    mean = grouped.mean(numeric_only=True).reset_index()
+    std = grouped.std(numeric_only=True).add_suffix("_std").reset_index()
+    summary = mean.merge(std, on=group_cols, how="left")
+    if "subject" in bench_df.columns:
+        n_subjects = (
+            bench_df.groupby(group_cols, sort=False, dropna=False)["subject"]
+            .nunique()
+            .rename("n_subjects")
+            .reset_index()
+        )
+    else:
+        n_subjects = grouped.size().rename("n_subjects").reset_index()
+    summary = summary.merge(n_subjects, on=group_cols, how="left")
+    summary["display_label"] = summary["method"].map(_display_method_name)
+    return summary
+
+
+def _dipoles_complete_for_methods(comp_df: pd.DataFrame, methods: list[str]) -> bool:
+    if "dipole_residual_variance_percent" not in comp_df.columns:
+        return False
+    valid = comp_df.dropna(subset=["dipole_residual_variance_percent"])
+    if valid.empty:
+        return False
+    counts = valid.groupby("method").size()
+    return all(int(counts.get(method, 0)) > 0 for method in methods)
+
+
+def _dipole_share_by_method(comp_df: pd.DataFrame, methods: list[str], cutoff: float) -> pd.Series:
+    values = {}
+    rv_col = "dipole_residual_variance_percent"
+    for method in methods:
+        rv = comp_df.loc[comp_df["method"] == method, rv_col].dropna()
+        values[method] = float(100.0 * (rv <= cutoff).mean()) if not rv.empty else np.nan
+    return pd.Series(values, name=f"nd_{cutoff:g}_percent")
+
+
+def _annotate_method_points(ax, plot_df: pd.DataFrame, x_col: str, y_col: str) -> None:
+    """Annotate points once per rounded coordinate to avoid co-located labels."""
+    amica_df = plot_df[plot_df["display_label"].astype(str).str.startswith("AMICA ")]
+    merged_amica = (
+        len(amica_df) > 1
+        and np.ptp(amica_df[x_col].to_numpy(dtype=float)) <= 0.02
+        and np.ptp(amica_df[y_col].to_numpy(dtype=float)) <= 0.5
+    )
+    if merged_amica:
+        ax.annotate(
+            _combine_display_labels(amica_df["display_label"].astype(str).tolist()),
+            (float(amica_df[x_col].mean()), float(amica_df[y_col].mean())),
+            xytext=(5, 8),
+            textcoords="offset points",
+            fontsize=7,
+        )
+        plot_df = plot_df.loc[~plot_df.index.isin(amica_df.index)]
+
+    groups: dict[tuple[float, float], list[str]] = {}
+    coords: dict[tuple[float, float], tuple[float, float]] = {}
+    for _, row in plot_df.iterrows():
+        x = float(row[x_col])
+        y = float(row[y_col])
+        if not (np.isfinite(x) and np.isfinite(y)):
+            continue
+        key = (round(x, 3), round(y, 2))
+        groups.setdefault(key, []).append(str(row["display_label"]))
+        coords.setdefault(key, (x, y))
+
+    for key, labels in groups.items():
+        x, y = coords[key]
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+        dx = 5 if x < x0 + 0.35 * (x1 - x0) else -18
+        dy = 5 if y < y0 + 0.75 * (y1 - y0) else -12
+        ax.annotate(
+            _combine_display_labels(labels),
+            (x, y),
+            xytext=(dx, dy),
+            textcoords="offset points",
+            fontsize=7,
+        )
+
+
+def _plot_cutoff_r2_panel(
+    ax,
+    comp_df: pd.DataFrame,
+    plot_df: pd.DataFrame,
+    metric_col: str,
+    *,
+    panel_letter: str,
+    metric_label: str,
+) -> None:
+    """Frank 2022-style R^2 trend across near-dipolar residual-variance cutoffs."""
+    ax.set_title(f"{panel_letter}. {metric_label} R^2 across cutoffs", loc="left", fontweight="bold")
+    ax.set_xlabel("Near-dipolar cutoff (% r.v.)")
+    ax.set_ylabel("R^2")
+    ax.set_xlim(1, 100)
+    ax.set_ylim(0, 1)
+
+    methods = plot_df["method"].tolist()
+    thresholds = np.arange(1.0, 101.0)
+    r2_values: list[float] = []
+    p_values: list[float] = []
+    x = plot_df.set_index("method")[metric_col].reindex(methods).to_numpy(dtype=float)
+
+    for cutoff in thresholds:
+        y = _dipole_share_by_method(comp_df, methods, cutoff).reindex(methods).to_numpy(dtype=float)
+        mask = np.isfinite(x) & np.isfinite(y)
+        if mask.sum() < 3 or np.ptp(x[mask]) == 0 or np.ptp(y[mask]) == 0:
+            r2_values.append(np.nan)
+            p_values.append(np.nan)
+            continue
+        _, _, r, p, _ = stats.linregress(x[mask], y[mask])
+        r2_values.append(float(r ** 2))
+        p_values.append(float(p))
+
+    ax.plot(thresholds, r2_values, color="#1F77B4", lw=1.4, label="R^2")
+    finite_p = np.asarray(p_values, dtype=float)
+    if np.isfinite(finite_p).any():
+        p_trace = -np.log10(np.clip(finite_p, 1e-300, 1.0))
+        if np.nanmax(p_trace) > 0:
+            ax.plot(
+                thresholds,
+                p_trace / np.nanmax(p_trace),
+                color="#C76922",
+                lw=1.0,
+                ls="--",
+                label="-log10(p), scaled",
+            )
+    for cutoff in (5, 10):
+        ax.axvline(cutoff, ls=":", color="#888", lw=0.7)
+    ax.legend(frameon=False, loc="upper right", fontsize=7)
+
+
 def _write_caption(captions_dir: Path, stem: str, text: str, *, bench_df: "pd.DataFrame | None" = None):
     captions_dir.mkdir(parents=True, exist_ok=True)
     banner = _run_mode_banner(bench_df) if bench_df is not None else ""
@@ -137,10 +303,12 @@ def plot_cumulative_dipolarity(
     if have_dipole:
         stem = "fig01_cumulative_dipolarity"
         rv_grid = np.logspace(np.log10(1.0), np.log10(100.0), 200)
+        plotted_methods = []
         for method, mdf in comp_df.groupby("method"):
             rv = mdf["dipole_residual_variance_percent"].dropna().to_numpy()
             if rv.size == 0:
                 continue
+            plotted_methods.append(method)
             pct = np.array([100.0 * (rv <= t).mean() for t in rv_grid])
             ax.plot(rv_grid, pct, label=method, color=_color_for(method), lw=2.0)
         ax.set_xscale("log")
@@ -158,10 +326,15 @@ def plot_cumulative_dipolarity(
             "the left indicate more near-dipolar (cortically plausible) sources. "
             "Vertical dashed lines mark 5% and 10% residual variance, the cutoffs "
             "used by Delorme 2012 and Frank 2022 respectively.\n\n"
-            f"Methods: {sorted(comp_df['method'].unique().tolist())}. "
+            f"Methods plotted: {sorted(plotted_methods)}. "
             f"Subjects: {sorted(comp_df['subject'].unique().tolist())}. "
             "Hardware varies by method; see Table 2 / fig05."
         )
+        missing_methods = sorted(set(comp_df["method"].unique()) - set(plotted_methods))
+        if missing_methods:
+            caption += (
+                f" Methods without dipole residual variance were not plotted: {missing_methods}."
+            )
     else:
         stem = "fig01_iclabel_proxy_cumulative"
         thresholds = np.linspace(0.0, 1.0, 101)
@@ -236,96 +409,153 @@ def plot_quality_summary(
     out_dir: Path,
     captions_dir: Path,
 ) -> tuple[Path | None, str]:
-    """Delorme 2012 fig 4: B = MIR vs ND%, C = remnant PMI vs ND%, D = MIR vs runtime.
+    """Delorme 2012 / Frank 2022 quality summary.
 
-    Falls back to MIR vs ICLabel-brain% / remnant PMI vs ICLabel-brain% when
-    dipole residual variance is missing.
+    Panel A/C match the MIR/remnant-PMI vs dipolarity scatter panels. Panel B/D
+    show the Frank 2022 R^2 sweep over near-dipolar residual-variance cutoffs
+    when every plotted method has dipole residual variance. If any method is
+    missing dipoles, panel A/C use ICLabel-brain percentage as a clearly marked
+    proxy and panel B/D explain that the cutoff sweep is unavailable.
     """
     set_paper_style()
-    have_dipole = comp_df["dipole_residual_variance_percent"].notna().any()
-    if have_dipole:
-        nd_pct = (
-            comp_df.groupby("method")
-            .apply(lambda d: 100.0 * (d["dipole_residual_variance_percent"] <= 5).mean(), include_groups=False)
-            .rename("nd_5_percent")
-        )
+    summary = _method_summary(bench_df)
+    required = {"method", "mir_kbits_s", "remnant_pmi_percent", "fit_runtime_s"}
+    if summary.empty or not required.issubset(summary.columns):
+        return None, "no methods with both MIR/PMI and near-dipolar data"
+
+    methods = summary["method"].tolist()
+    have_complete_dipoles = _dipoles_complete_for_methods(comp_df, methods)
+    if have_complete_dipoles:
+        quality = _dipole_share_by_method(comp_df, methods, 5.0).rename("quality_y")
         y_label = "Near-dipolar components (% w/ r.v. <= 5)"
         proxy_label = ""
     else:
-        nd_pct = (
-            bench_df.set_index("method")["iclabel_brain_percent"]
-            .rename("nd_5_percent")
-        )
+        if "iclabel_brain_percent" not in summary.columns:
+            return None, "dipoles incomplete and ICLabel-brain proxy unavailable"
+        quality = summary.set_index("method")["iclabel_brain_percent"].rename("quality_y")
         y_label = "ICLabel brain % (proxy, NOT dipolarity)"
         proxy_label = "ICLabel proxy: NOT dipolarity"
 
-    # Multi-subject support: aggregate per method (mean across subjects), so
-    # the Frank 2022 R^2 regression is on method centroids (one dot per method)
-    # not per (method, subject) pair.
-    numeric_cols = ["mir_kbits_s", "remnant_pmi_percent", "fit_runtime_s"]
-    by_method = (
-        bench_df[["method", *numeric_cols]]
-        .groupby("method", sort=False)
-        .mean(numeric_only=True)
+    plot_df = (
+        summary.set_index("method")
+        .join(quality, how="inner")
+        .dropna(subset=["mir_kbits_s", "remnant_pmi_percent", "quality_y"])
+        .reset_index()
     )
-    methods = [m for m in by_method.index if pd.notna(nd_pct.get(m))]
-    if not methods:
+    if plot_df.empty:
         return None, "no methods with both MIR/PMI and near-dipolar data"
-    mir = by_method.loc[methods, "mir_kbits_s"].to_numpy()
-    remnant = by_method.loc[methods, "remnant_pmi_percent"].to_numpy()
-    nd = nd_pct.loc[methods].to_numpy()
-    runtimes = by_method.loc[methods, "fit_runtime_s"].to_numpy()
 
-    fig, axes = plt.subplots(1, 3, figsize=(13.0, 4.4))
-    # Panel B: MIR vs ND
-    for m, x, y in zip(methods, mir, nd):
-        axes[0].scatter(x, y, color=_color_for(m), s=80, edgecolor="black", linewidth=0.6, label=m)
-        axes[0].annotate(m, (x, y), xytext=(4, 4), textcoords="offset points", fontsize=7)
+    fig, axes = plt.subplots(2, 2, figsize=(8.2, 6.4))
+    axes = axes.ravel()
+
+    for _, row in plot_df.iterrows():
+        axes[0].scatter(
+            row["mir_kbits_s"],
+            row["quality_y"],
+            color=_color_for(row["method"]),
+            s=58,
+            edgecolor="black",
+            linewidth=0.6,
+            zorder=3,
+        )
     _regression_with_inset(
-        axes[0], mir, nd,
+        axes[0],
+        plot_df["mir_kbits_s"],
+        plot_df["quality_y"],
         x_label="Mean MIR (kbits/sec)",
         y_label=y_label,
-        panel_letter="B",
+        panel_letter="A",
     )
-    # Panel C: remnant PMI vs ND
-    for m, x, y in zip(methods, remnant, nd):
-        axes[1].scatter(x, y, color=_color_for(m), s=80, edgecolor="black", linewidth=0.6)
-        axes[1].annotate(m, (x, y), xytext=(4, 4), textcoords="offset points", fontsize=7)
+    _annotate_method_points(axes[0], plot_df, "mir_kbits_s", "quality_y")
+
+    if have_complete_dipoles:
+        _plot_cutoff_r2_panel(
+            axes[1],
+            comp_df,
+            plot_df,
+            "mir_kbits_s",
+            panel_letter="B",
+            metric_label="MIR",
+        )
+    else:
+        axes[1].set_title("B. MIR R^2 across cutoffs", loc="left", fontweight="bold")
+        axes[1].axis("off")
+        axes[1].text(
+            0.5,
+            0.5,
+            "Dipole cutoff sweep unavailable\n(comparator dipoles missing)",
+            transform=axes[1].transAxes,
+            ha="center",
+            va="center",
+            fontsize=8,
+        )
+
+    for _, row in plot_df.iterrows():
+        axes[2].scatter(
+            row["remnant_pmi_percent"],
+            row["quality_y"],
+            color=_color_for(row["method"]),
+            s=58,
+            edgecolor="black",
+            linewidth=0.6,
+            zorder=3,
+        )
     _regression_with_inset(
-        axes[1], remnant, nd,
+        axes[2],
+        plot_df["remnant_pmi_percent"],
+        plot_df["quality_y"],
         x_label="Remnant pairwise MI (%)",
         y_label=y_label,
         panel_letter="C",
     )
-    # Panel D: runtime-quality tradeoff
-    for m, x, y in zip(methods, runtimes, mir):
-        axes[2].scatter(x, y, color=_color_for(m), s=80, edgecolor="black", linewidth=0.6)
-        axes[2].annotate(m, (x, y), xytext=(4, 4), textcoords="offset points", fontsize=7)
-    axes[2].set_xscale("log")
-    axes[2].set_xlabel("Fit runtime (s, log)")
-    axes[2].set_ylabel("MIR (kbits/sec)")
-    axes[2].set_title("D. Runtime–quality tradeoff", loc="left", fontweight="bold")
+    _annotate_method_points(axes[2], plot_df, "remnant_pmi_percent", "quality_y")
 
-    suptitle = "Figure 2. ICA decomposition quality (Delorme-style)"
+    if have_complete_dipoles:
+        _plot_cutoff_r2_panel(
+            axes[3],
+            comp_df,
+            plot_df,
+            "remnant_pmi_percent",
+            panel_letter="D",
+            metric_label="PMI",
+        )
+    else:
+        axes[3].set_title("D. PMI R^2 across cutoffs", loc="left", fontweight="bold")
+        axes[3].axis("off")
+        axes[3].text(
+            0.5,
+            0.5,
+            "Dipole cutoff sweep unavailable\n(comparator dipoles missing)",
+            transform=axes[3].transAxes,
+            ha="center",
+            va="center",
+            fontsize=8,
+        )
+
+    suptitle = "Figure 2. ICA decomposition quality (Frank 2022 style)"
     if proxy_label:
-        suptitle += f" — {proxy_label}"
+        suptitle += f" -- {proxy_label}"
     fig.suptitle(suptitle, fontsize=11, fontweight="bold", y=1.02)
     fig.tight_layout()
     _apply_run_mode_banner(fig, bench_df, y=1.06)
     paths = _save(fig, out_dir, "fig02_delorme_style_summary")
     plt.close(fig)
     caption = (
-        "Figure 2. Delorme 2012 style 3-panel summary.\n"
-        "B: MIR (kbits/sec) vs near-dipolar component share. C: remnant pairwise "
-        "mutual information vs near-dipolar share. D: fit runtime vs MIR. Each "
-        "point is one method on the same input.\n"
+        "Figure 2. Frank 2022 style decomposition-quality summary.\n"
+        "A: mean MIR (kbits/sec) vs near-dipolar component share. B: R^2 of "
+        "MIR vs near-dipolar share across residual-variance cutoffs. C: "
+        "remnant pairwise mutual information vs near-dipolar share. D: R^2 "
+        "of remnant pairwise mutual information vs near-dipolar share across "
+        "residual-variance cutoffs. Each point is the across-subject method "
+        "centroid for the same input dataset.\n"
     )
-    if not have_dipole:
+    if not have_complete_dipoles:
         caption += (
-            "WARNING: dipole residual variance is not available in this run; "
-            "panels B and C use the ICLabel-brain percentage as a proxy. This "
-            "proxy is NOT equivalent to dipolarity and the regression "
-            "statistics should be interpreted as preliminary."
+            "WARNING: dipole residual variance is not available for every "
+            "method in this run; panels A and C use ICLabel-brain percentage "
+            "as a proxy, while panels B and D do not report cutoff sweeps. "
+            "This proxy is NOT equivalent to dipolarity and should be "
+            "interpreted as preliminary."
         )
     _write_caption(captions_dir, "fig02_delorme_style_summary", caption, bench_df=bench_df)
     return Path(paths[0]), caption
@@ -337,40 +567,69 @@ def plot_quality_summary(
 
 def plot_mir_comparison(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Path) -> dict:
     set_paper_style()
-    cols = [
-        "method", "backend", "device",
-        "n_iter_actual", "max_iter", "converged_before_cap",
-        "mir_bits_per_sample", "mir_kbits_s",
-        "remnant_pmi_percent",
-        "iclabel_brain_percent",
-        "fit_runtime_s",
+    summary = _method_summary(bench_df)
+    if summary.empty or "mir_kbits_s" not in summary.columns:
+        return {"csv": None, "md": None, "diff_png": None, "diff_pdf": None, "caption": "no MIR data"}
+
+    table_cols = [
+        c
+        for c in [
+            "method",
+            "display_label",
+            "backend",
+            "device",
+            "n_subjects",
+            "mir_kbits_s",
+            "mir_kbits_s_std",
+            "remnant_pmi_percent",
+            "remnant_pmi_percent_std",
+            "iclabel_brain_percent",
+            "iclabel_brain_percent_std",
+            "fit_runtime_s",
+            "fit_runtime_s_std",
+            "n_iter_actual",
+            "n_iter_actual_std",
+            "max_iter",
+        ]
+        if c in summary.columns
     ]
-    available = [c for c in cols if c in bench_df.columns]
-    table = bench_df[available].copy()
-    table = table.sort_values(by="mir_kbits_s", ascending=False, na_position="last")
+    table = summary[table_cols].copy()
+    table = table.sort_values(by="mir_kbits_s", ascending=False, na_position="last", kind="mergesort")
     out_dir.mkdir(parents=True, exist_ok=True)
     csv_path = out_dir / "fig04_mir_table.csv"
     md_path = out_dir / "fig04_mir_table.md"
     table.to_csv(csv_path, index=False)
     md_path.write_text(table.to_markdown(index=False, floatfmt=".4g"), encoding="utf-8")
 
-    # Plot MIR difference from the best method
     best_idx = table["mir_kbits_s"].idxmax() if table["mir_kbits_s"].notna().any() else None
     diff_paths = None
     if best_idx is not None:
         best_mir = table.loc[best_idx, "mir_kbits_s"]
-        plot_df = table.copy()
+        best_label = str(table.loc[best_idx, "display_label"])
+        plot_df = table.dropna(subset=["mir_kbits_s"]).copy()
         plot_df["mir_diff_kbits_s"] = plot_df["mir_kbits_s"] - best_mir
-        fig, ax = plt.subplots(figsize=(7.5, 4.2))
+        x = np.arange(len(plot_df))
+        fig, ax = plt.subplots(figsize=(8.0, 4.2))
         colors = [_color_for(m) for m in plot_df["method"]]
-        bars = ax.bar(plot_df["method"].astype(str), plot_df["mir_diff_kbits_s"], color=colors)
+        bars = ax.bar(x, plot_df["mir_diff_kbits_s"], color=colors, width=0.72)
         ax2 = ax.twinx()
-        ax2.plot(range(len(plot_df)), plot_df["mir_kbits_s"], "o-", color="#222", lw=1.2, ms=5)
+        ax2.plot(x, plot_df["mir_kbits_s"], "o-", color="#222", lw=1.2, ms=4)
         ax2.set_ylabel("Mean MIR (kbits/sec)")
         ax.axhline(0, color="black", lw=0.8)
-        ax.set_ylabel(f"MIR difference vs best ({plot_df.loc[best_idx, 'method']}) (kbits/sec)")
-        ax.set_xticklabels(plot_df["method"].astype(str), rotation=20, ha="right")
+        ax.set_ylabel(f"MIR difference vs best ({best_label}) (kbits/sec)")
+        ax.set_xticks(x)
+        ax.set_xticklabels(plot_df["display_label"], rotation=25, ha="right")
         ax.set_title("Figure 4. MIR comparison (Frank 2022 style)", loc="left", fontweight="bold")
+        for bar, diff in zip(bars, plot_df["mir_diff_kbits_s"]):
+            if np.isfinite(diff) and diff < -0.05:
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    diff,
+                    f"{diff:.2f}",
+                    ha="center",
+                    va="top",
+                    fontsize=7,
+                )
         fig.tight_layout()
         _apply_run_mode_banner(fig, bench_df)
         diff_paths = _save(fig, out_dir, "fig04_mir_difference")
@@ -378,9 +637,10 @@ def plot_mir_comparison(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Pat
 
     caption = (
         "Figure 4. MIR comparison.\n"
-        "Bars: MIR difference vs the best-performing method on this run. "
-        "Line: mean MIR (right axis). Methods sorted from highest to lowest "
-        "MIR. Hardware/backend differ across methods -- see Table 2."
+        "Bars: across-subject mean MIR difference vs the best-performing method "
+        "in this benchmark configuration. Line: across-subject mean MIR (right "
+        "axis). Methods are sorted from highest to lowest mean MIR. "
+        "Hardware/backend differ across methods; see the runtime summary."
     )
     _write_caption(captions_dir, "fig04_mir_difference", caption, bench_df=bench_df)
     return {
@@ -398,33 +658,49 @@ def plot_mir_comparison(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Pat
 
 def plot_runtime_summary(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Path) -> tuple[Path | None, str]:
     set_paper_style()
-    df = bench_df.dropna(subset=["fit_runtime_s"]).copy()
+    summary = _method_summary(bench_df)
+    if summary.empty or "fit_runtime_s" not in summary.columns:
+        return None, "no runtime data"
+    df = summary.dropna(subset=["fit_runtime_s"]).copy()
     if df.empty:
         return None, "no runtime data"
-    df["label"] = df.apply(
-        lambda r: f"{r['method']}\n({r.get('backend', '?')} / {r.get('device', '?')})",
-        axis=1,
-    )
-    df = df.sort_values("fit_runtime_s", ascending=True)
-    fig, ax = plt.subplots(figsize=(7.5, 4.0))
+    df = df.sort_values("fit_runtime_s", ascending=True, kind="mergesort")
+
+    x = np.arange(len(df))
+    means = df["fit_runtime_s"].to_numpy(dtype=float)
+    std_col = "fit_runtime_s_std"
+    yerr = df[std_col].fillna(0).to_numpy(dtype=float) if std_col in df.columns else None
+
+    fig, ax = plt.subplots(figsize=(7.8, 4.0))
     colors = [_color_for(m) for m in df["method"]]
-    bars = ax.bar(df["label"], df["fit_runtime_s"], color=colors)
+    bars = ax.bar(x, means, color=colors, width=0.72)
+    if yerr is not None and np.isfinite(yerr).any():
+        ax.errorbar(x, means, yerr=yerr, fmt="none", ecolor="#222", elinewidth=0.8, capsize=2)
     ax.set_yscale("log")
     ax.set_ylabel("Fit runtime (s, log)")
     ax.set_title("Figure 5. Fit runtime by method (engineering benchmark)", loc="left", fontweight="bold")
-    ax.set_xticklabels(df["label"], rotation=20, ha="right", fontsize=8)
-    for bar, val in zip(bars, df["fit_runtime_s"]):
-        ax.text(bar.get_x() + bar.get_width() / 2, val * 1.05,
-                f"{val:.1f}s", ha="center", va="bottom", fontsize=7)
+    ax.set_xticks(x)
+    ax.set_xticklabels(df["display_label"], rotation=25, ha="right", fontsize=8)
+    for bar, mean, std in zip(bars, means, yerr if yerr is not None else np.zeros_like(means)):
+        label = f"{mean:,.0f} s" if not np.isfinite(std) or std == 0 else f"{mean:,.0f} +/- {std:,.0f} s"
+        label_y = (mean + std) * 1.08 if np.isfinite(std) else mean * 1.08
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            label_y,
+            label,
+            ha="center",
+            va="bottom",
+            fontsize=7,
+        )
     fig.tight_layout()
     _apply_run_mode_banner(fig, bench_df)
     paths = _save(fig, out_dir, "fig05_runtime")
     plt.close(fig)
     caption = (
-        "Figure 5. Fit runtime per method, log scale. Bars annotated with "
-        "(backend/device). This is an engineering benchmark -- AMICA-Python is "
-        "on JAX-GPU while the comparators are on CPU; runtime comparisons "
-        "across these is a systems benchmark, not a pure-algorithm one."
+        "Figure 5. Fit runtime per method, log scale. Bars show across-subject "
+        "mean fit runtime; whiskers show standard deviation. This is an "
+        "engineering benchmark: AMICA-Python JAX-GPU uses GPU acceleration, "
+        "whereas the comparator methods and NumPy AMICA are CPU runs."
     )
     _write_caption(captions_dir, "fig05_runtime", caption, bench_df=bench_df)
     return Path(paths[0]), caption

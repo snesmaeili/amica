@@ -16,6 +16,7 @@ cd "$SLURM_SUBMIT_DIR"
 source fir_env.sh
 
 export AMICA_RESULTS_DIR="${V3_RESULTS_DIR:-/scratch/$USER/amica_python_validation_v3}"
+export AMICA_COMPUTE_DIPOLES="${AMICA_COMPUTE_DIPOLES:-1}"
 mkdir -p "$AMICA_RESULTS_DIR"
 
 # Infomax via MNE: extended=True, w_change=1e-7 (matches Picard tightness).

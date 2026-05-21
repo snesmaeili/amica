@@ -16,6 +16,7 @@ cd "$SLURM_SUBMIT_DIR"
 source fir_env.sh
 
 export AMICA_RESULTS_DIR="${V3_RESULTS_DIR:-/scratch/$USER/amica_python_validation_v3}"
+export AMICA_COMPUTE_DIPOLES="${AMICA_COMPUTE_DIPOLES:-1}"
 mkdir -p "$AMICA_RESULTS_DIR"
 
 # Picard via MNE: tol=1e-6 (tightened from sklearn default 1e-4), ortho=False,
