@@ -606,28 +606,31 @@ def plot_mir_comparison(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Pat
     if best_idx is not None:
         best_mir = table.loc[best_idx, "mir_kbits_s"]
         best_label = str(table.loc[best_idx, "display_label"])
+        # Frank 2022 fig 4 convention: positive = "AMICA advantage". The best
+        # method's bar sits at 0; every other method's bar gives the deficit
+        # (best - this) so larger bars = bigger AMICA advantage.
         plot_df = table.dropna(subset=["mir_kbits_s"]).copy()
-        plot_df["mir_diff_kbits_s"] = plot_df["mir_kbits_s"] - best_mir
+        plot_df["amica_advantage_kbits_s"] = best_mir - plot_df["mir_kbits_s"]
         x = np.arange(len(plot_df))
         fig, ax = plt.subplots(figsize=(8.0, 4.2))
         colors = [_color_for(m) for m in plot_df["method"]]
-        bars = ax.bar(x, plot_df["mir_diff_kbits_s"], color=colors, width=0.72)
+        bars = ax.bar(x, plot_df["amica_advantage_kbits_s"], color=colors, width=0.72)
         ax2 = ax.twinx()
         ax2.plot(x, plot_df["mir_kbits_s"], "o-", color="#222", lw=1.2, ms=4)
         ax2.set_ylabel("Mean MIR (kbits/sec)")
         ax.axhline(0, color="black", lw=0.8)
-        ax.set_ylabel(f"MIR difference vs best ({best_label}) (kbits/sec)")
+        ax.set_ylabel(f"Best-method MIR advantage vs each method (kbits/sec)\n(best = {best_label})")
         ax.set_xticks(x)
         ax.set_xticklabels(plot_df["display_label"], rotation=25, ha="right")
         ax.set_title("Figure 4. MIR comparison (Frank 2022 style)", loc="left", fontweight="bold")
-        for bar, diff in zip(bars, plot_df["mir_diff_kbits_s"]):
-            if np.isfinite(diff) and diff < -0.05:
+        for bar, diff in zip(bars, plot_df["amica_advantage_kbits_s"]):
+            if np.isfinite(diff) and diff > 0.05:
                 ax.text(
                     bar.get_x() + bar.get_width() / 2,
                     diff,
-                    f"{diff:.2f}",
+                    f"+{diff:.2f}",
                     ha="center",
-                    va="top",
+                    va="bottom",
                     fontsize=7,
                 )
         fig.tight_layout()
@@ -636,10 +639,11 @@ def plot_mir_comparison(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Pat
         plt.close(fig)
 
     caption = (
-        "Figure 4. MIR comparison.\n"
-        "Bars: across-subject mean MIR difference vs the best-performing method "
-        "in this benchmark configuration. Line: across-subject mean MIR (right "
-        "axis). Methods are sorted from highest to lowest mean MIR. "
+        "Figure 4. MIR comparison (Frank 2022 fig 4 style).\n"
+        f"Bars: across-subject mean MIR advantage of the best method ({best_label if best_idx is not None else 'AMICA'}) over each other method, "
+        "in kbits/sec. The best method's own bar sits at 0 by construction; "
+        "larger bars indicate bigger MIR gap. Line: across-subject mean MIR "
+        "(right axis). Methods are sorted from highest to lowest mean MIR. "
         "Hardware/backend differ across methods; see the runtime summary."
     )
     _write_caption(captions_dir, "fig04_mir_difference", caption, bench_df=bench_df)
@@ -733,7 +737,9 @@ def plot_amica_convergence(iter_df: pd.DataFrame, out_dir: Path, captions_dir: P
     axes[0].set_ylabel("Log-likelihood")
     axes[0].set_title("A. AMICA convergence trace", loc="left", fontweight="bold")
     axes[0].legend(loc="lower right", frameon=False, fontsize=8)
-    # Panel B: Δ log-likelihood per iter (proxy for improvement rate; remnant PMI not available per-iter yet)
+    # Panel B: Δ log-likelihood per iter. Frank 2023 plots MIR/PMI per iter
+    # using saved checkpoints; we don't yet hook the AMICA fit loop, so we
+    # show LL improvement -- a related but DIFFERENT optimisation diagnostic.
     for sub, sdf in df.groupby("subject"):
         sdf = sdf.sort_values("iteration")
         dll = np.diff(sdf["log_likelihood"].to_numpy())
@@ -741,7 +747,7 @@ def plot_amica_convergence(iter_df: pd.DataFrame, out_dir: Path, captions_dir: P
     axes[1].axhline(0, color="black", lw=0.6)
     axes[1].set_xlabel("AMICA iteration")
     axes[1].set_ylabel("Δ log-likelihood")
-    axes[1].set_title("B. Per-iteration improvement (proxy for MIR rate)", loc="left", fontweight="bold")
+    axes[1].set_title("B. Δ log-likelihood per iteration", loc="left", fontweight="bold")
     if n_subjects == 1:
         fig.suptitle("Figure 7. AMICA convergence (single-subject pilot)", fontweight="bold")
     else:
@@ -755,9 +761,10 @@ def plot_amica_convergence(iter_df: pd.DataFrame, out_dir: Path, captions_dir: P
         "iteration, one line per subject; thick line is the across-subject "
         "median when n_subjects > 1. Vertical dashed lines at 50, 250, 1000, "
         "2000, 3000 mark the iteration milestones used in Frank 2023. Panel "
-        "B: per-iteration LL improvement (Δ LL) as a proxy for MIR improvement "
-        "rate; the true per-iteration MIR/PMI trace is deferred (would require "
-        "hooking AMICA's fit loop)."
+        "B: per-iteration LL improvement (Δ LL) -- an optimisation-progress "
+        "diagnostic, NOT a direct measurement of MIR or PMI gain (Frank 2023 "
+        "plots MIR/PMI per iteration via fit-loop checkpoints which we do not "
+        "hook yet)."
     )
     _write_caption(captions_dir, "fig07_amica_iterations", caption, bench_df=bench_df)
     return Path(paths[0]), caption
@@ -860,9 +867,9 @@ def plot_data_sufficiency(bench_df: pd.DataFrame, out_dir: Path, captions_dir: P
     handles = [
         Patch(facecolor="#4477AA", label="κ_channels"),
         Patch(facecolor="#EE6677", label="κ_effective"),
-        Patch(facecolor="white", edgecolor=verdict_colors["below_delorme_min"], linewidth=1.5, label="below Delorme min"),
-        Patch(facecolor="white", edgecolor=verdict_colors["meets_delorme_min"], linewidth=1.5, label="meets Delorme min"),
-        Patch(facecolor="white", edgecolor=verdict_colors["paper_grade"],       linewidth=1.5, label="paper-grade"),
+        Patch(facecolor="white", edgecolor=verdict_colors["below_delorme_min"], linewidth=1.5, label="κ < 30 (limited)"),
+        Patch(facecolor="white", edgecolor=verdict_colors["meets_delorme_min"], linewidth=1.5, label="30 ≤ κ < 50 (Delorme min met)"),
+        Patch(facecolor="white", edgecolor=verdict_colors["paper_grade"],       linewidth=1.5, label="κ ≥ 50 (high-data regime)"),
     ]
     ax.legend(handles=handles, frameon=False, loc="upper right", ncol=1, fontsize=8)
     fig.tight_layout()
@@ -873,8 +880,10 @@ def plot_data_sufficiency(bench_df: pd.DataFrame, out_dir: Path, captions_dir: P
         "Figure 8. Data-sufficiency κ. κ_channels = n_samples / n_channels² "
         "(blue); κ_effective = n_samples / n_components² (red). Reference "
         "lines at κ=20, κ=30 (Delorme 2012 minimum) and κ=50 (Frank 2025 "
-        "paper-grade). Below the Delorme line, ICA quality claims should be "
-        "labelled preliminary."
+        "high-data regime). Frank 2025 finds ICA quality continues improving "
+        "past κ=50 with no clear plateau, so κ ≥ 50 is a strong-data regime, "
+        "not a proof of optimal decomposition. Bar edge colour encodes the "
+        "per-subject regime (red < 30, amber 30-50, teal ≥ 50)."
     )
     _write_caption(captions_dir, "fig08_kappa_sufficiency", caption, bench_df=bench_df)
     return Path(paths[0]), caption
@@ -883,6 +892,140 @@ def plot_data_sufficiency(bench_df: pd.DataFrame, out_dir: Path, captions_dir: P
 # ---------------------------------------------------------------------------
 # CLI -- generates everything tractable from the CSVs in --results-dir.
 # ---------------------------------------------------------------------------
+
+def plot_paired_mir_difference(
+    bench_df: pd.DataFrame,
+    out_dir: Path,
+    captions_dir: Path,
+    *,
+    reference_method_token: str = "amica",
+) -> tuple[Path | None, str]:
+    """Figure 9: per-subject paired Δ MIR (reference − comparator) with t-test.
+
+    For each comparator method, compute the per-subject difference
+    ``mir_kbits_s[reference, sub] − mir_kbits_s[comparator, sub]`` and display
+    as a strip+box plot with the paired t-test p-value and Cohen's d_z.
+    The reference method is the highest-MIR method whose ``backend`` contains
+    ``reference_method_token`` (default 'amica') so this generalises to either
+    JAX-GPU or NumPy-CPU as the AMICA representative.
+    """
+    from scipy import stats as _scistats
+    set_paper_style()
+    needed = {"method", "subject", "mir_kbits_s"}
+    if not needed.issubset(bench_df.columns):
+        return None, "missing columns for paired Δ MIR"
+    df = bench_df.dropna(subset=["mir_kbits_s"]).copy()
+    if df.empty:
+        return None, "no MIR data"
+    # Resolve display labels so the figure shows e.g. "AMICA-Python (JAX-GPU)"
+    if "display_label" not in df.columns:
+        df["display_label"] = df["method"]
+    # Pick the AMICA-family method with highest grand mean MIR as reference.
+    mean_by_method = df.groupby("method")["mir_kbits_s"].mean()
+    amica_methods = [m for m in mean_by_method.index if reference_method_token.lower() in str(m).lower()
+                     or reference_method_token.lower() in str(df.loc[df["method"] == m, "backend"].iloc[0]).lower()]
+    if not amica_methods:
+        return None, f"no method containing token '{reference_method_token}' to anchor Δ MIR"
+    ref_method = mean_by_method.loc[amica_methods].idxmax()
+    ref_label = str(df.loc[df["method"] == ref_method, "display_label"].iloc[0])
+    others = [m for m in mean_by_method.index if m != ref_method
+              and reference_method_token.lower() not in str(m).lower()]
+    if not others:
+        return None, "no comparator methods to test against"
+    # Build paired matrix (subjects x methods).
+    pivot = df.pivot_table(index="subject", columns="method", values="mir_kbits_s", aggfunc="mean")
+    rows = []
+    for comp in others:
+        common = pivot[[ref_method, comp]].dropna()
+        if len(common) < 2:
+            continue
+        diff = (common[ref_method] - common[comp]).to_numpy()
+        n = int(len(diff))
+        mean = float(np.mean(diff))
+        sd = float(np.std(diff, ddof=1)) if n > 1 else float("nan")
+        se = sd / np.sqrt(n) if n > 1 else float("nan")
+        ci_half = 1.96 * se if n > 1 else float("nan")
+        cohen_dz = mean / sd if (sd and np.isfinite(sd) and sd > 0) else float("nan")
+        try:
+            t_stat, p_two = _scistats.ttest_rel(common[ref_method], common[comp])
+            t_stat = float(t_stat); p_two = float(p_two)
+        except Exception:
+            t_stat, p_two = float("nan"), float("nan")
+        rows.append({
+            "comparator": comp,
+            "comparator_label": str(df.loc[df["method"] == comp, "display_label"].iloc[0]),
+            "n": n, "diff": diff,
+            "mean": mean, "sd": sd, "ci_half": ci_half,
+            "cohen_dz": cohen_dz, "t_stat": t_stat, "p_two_sided": p_two,
+        })
+    if not rows:
+        return None, "no paired comparator/AMICA cells with >=2 subjects"
+
+    fig, ax = plt.subplots(figsize=(2.0 + 1.8 * len(rows), 5.4))
+    x = np.arange(len(rows))
+    rng = np.random.default_rng(0)
+    all_points = np.concatenate([r["diff"] for r in rows])
+    y_lo, y_hi = float(np.min(all_points)), float(np.max(all_points))
+    y_range = y_hi - y_lo
+    # Headroom for significance-star annotations above the highest point;
+    # extra footroom for the zero-reference line.
+    y_top = y_hi + 0.30 * y_range
+    y_bot = min(0.0, y_lo) - 0.05 * y_range
+    for i, r in enumerate(rows):
+        d = r["diff"]
+        jitter = rng.normal(0.0, 0.05, size=len(d))
+        color = _color_for(r["comparator"])
+        ax.scatter(np.full_like(d, i, dtype=float) + jitter, d,
+                   color=color, s=22, alpha=0.6, edgecolor="black", linewidth=0.4, zorder=3)
+        # Mean bar + 95% CI box.
+        ax.hlines(r["mean"], i - 0.28, i + 0.28, color="black", lw=1.6, zorder=4)
+        if np.isfinite(r["ci_half"]):
+            ax.add_patch(plt.Rectangle((i - 0.28, r["mean"] - r["ci_half"]),
+                                       0.56, 2 * r["ci_half"],
+                                       facecolor="none", edgecolor="black", lw=1.0, zorder=4))
+        # Significance star + p-value + Cohen's d_z above the highest data point.
+        sig = "***" if r["p_two_sided"] < 1e-3 else "**" if r["p_two_sided"] < 1e-2 else "*" if r["p_two_sided"] < 0.05 else "ns"
+        top = max(d) if len(d) else r["mean"]
+        ax.text(i, top + 0.04 * y_range, sig,
+                ha="center", va="bottom", fontsize=12, fontweight="bold", color="#222")
+        ax.text(i, top + 0.13 * y_range,
+                f"p = {r['p_two_sided']:.1e}\n$d_z$ = {r['cohen_dz']:+.2f}",
+                ha="center", va="bottom", fontsize=8, color="#222")
+    ax.axhline(0, color="#888", lw=0.8, ls="--")
+    ax.set_xlim(-0.55, len(rows) - 0.45)
+    ax.set_ylim(y_bot, y_top)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{ref_label}\n−\n{r['comparator_label']}" for r in rows], fontsize=8)
+    ax.set_ylabel("Δ MIR (kbits/sec), paired per subject")
+    ax.set_title(f"Figure 9. Paired Δ MIR ({ref_label} − comparator), n={rows[0]['n']} subjects",
+                 loc="left", fontweight="bold", pad=12)
+    fig.tight_layout()
+    _apply_run_mode_banner(fig, bench_df)
+    paths = _save(fig, out_dir, "fig09_paired_mir_difference")
+    plt.close(fig)
+    # Persist the per-comparator stats as CSV for the paper table.
+    stats_rows = [{k: v for k, v in r.items() if k != "diff"} for r in rows]
+    pd.DataFrame(stats_rows).to_csv(out_dir / "fig09_paired_mir_stats.csv", index=False)
+
+    caption_lines = [
+        f"Figure 9. Per-subject paired Δ MIR between {ref_label} (reference) and "
+        "each comparator. Dots: one subject's (reference − comparator) MIR "
+        "difference in kbits/sec. Black bar: across-subject mean. Black box: "
+        "95% confidence interval of the mean (mean ± 1.96·SE). Significance "
+        "stars from a paired t-test on the same n subjects: * p<0.05, ** p<0.01, "
+        "*** p<0.001, ns = not significant. d_z is Cohen's standardized effect "
+        "size for paired differences.",
+    ]
+    for r in rows:
+        caption_lines.append(
+            f"  {ref_label} − {r['comparator_label']}: "
+            f"mean Δ = {r['mean']:+.3f} kbits/sec (95% CI ±{r['ci_half']:.3f}), "
+            f"n={r['n']}, t={r['t_stat']:+.2f}, p={r['p_two_sided']:.2e}, d_z={r['cohen_dz']:+.2f}."
+        )
+    caption = "\n".join(caption_lines)
+    _write_caption(captions_dir, "fig09_paired_mir_difference", caption, bench_df=bench_df)
+    return Path(paths[0]), caption
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -914,6 +1057,7 @@ def main():
     if not iter_df.empty:
         results["fig07"] = plot_amica_convergence(iter_df, out_dir, captions_dir, bench_df=bench_df)
     results["fig08"] = plot_data_sufficiency(bench_df, out_dir, captions_dir)
+    results["fig09"] = plot_paired_mir_difference(bench_df, out_dir, captions_dir)
 
     for k, v in results.items():
         print(f"  {k}: {v}")
