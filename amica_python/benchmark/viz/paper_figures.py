@@ -136,11 +136,25 @@ def _annotate_method_points(ax, plot_df: pd.DataFrame, x_col: str, y_col: str) -
         and np.ptp(amica_df[y_col].to_numpy(dtype=float)) <= 0.5
     )
     if merged_amica:
+        ax_x = float(amica_df[x_col].mean())
+        ax_y = float(amica_df[y_col].mean())
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+        # Push the merged AMICA label DOWN-LEFT when the point is in the
+        # upper-right quadrant (otherwise the long combined label hits the
+        # plot edge / overlaps the y-axis ticks).
+        in_right = ax_x > x0 + 0.55 * (x1 - x0)
+        in_top   = ax_y > y0 + 0.65 * (y1 - y0)
+        dx = -8 if in_right else 5
+        dy = -16 if in_top else 8
+        ha = "right" if in_right else "left"
+        va = "top" if in_top else "bottom"
         ax.annotate(
             _combine_display_labels(amica_df["display_label"].astype(str).tolist()),
-            (float(amica_df[x_col].mean()), float(amica_df[y_col].mean())),
-            xytext=(5, 8),
+            (ax_x, ax_y),
+            xytext=(dx, dy),
             textcoords="offset points",
+            ha=ha, va=va,
             fontsize=7,
         )
         plot_df = plot_df.loc[~plot_df.index.isin(amica_df.index)]
@@ -171,6 +185,28 @@ def _annotate_method_points(ax, plot_df: pd.DataFrame, x_col: str, y_col: str) -
         )
 
 
+def _per_subject_dipole_share(comp_df: pd.DataFrame, methods: list[str], cutoff: float) -> pd.DataFrame:
+    """Per-(subject, method) near-dipolar share at the given residual-variance cutoff.
+
+    Returns a long DataFrame with columns ``subject, method, nd_percent``.
+    """
+    rv_col = "dipole_residual_variance_percent"
+    if "subject" not in comp_df.columns or rv_col not in comp_df.columns:
+        return pd.DataFrame(columns=["subject", "method", "nd_percent"])
+    df = comp_df.loc[comp_df["method"].isin(methods), ["subject", "method", rv_col]].dropna()
+    if df.empty:
+        return pd.DataFrame(columns=["subject", "method", "nd_percent"])
+    grouped = (
+        df.assign(_le=(df[rv_col] <= cutoff).astype(float))
+          .groupby(["subject", "method"])["_le"]
+          .mean()
+          .mul(100.0)
+          .rename("nd_percent")
+          .reset_index()
+    )
+    return grouped
+
+
 def _plot_cutoff_r2_panel(
     ax,
     comp_df: pd.DataFrame,
@@ -179,8 +215,15 @@ def _plot_cutoff_r2_panel(
     *,
     panel_letter: str,
     metric_label: str,
+    bench_df: pd.DataFrame | None = None,
 ) -> None:
-    """Frank 2022-style R^2 trend across near-dipolar residual-variance cutoffs."""
+    """Frank 2022-style R^2 trend across near-dipolar residual-variance cutoffs.
+
+    If a per-subject ``bench_df`` is supplied, the regression is computed on the
+    pooled (subject, method) points (typically ~5*25 = 125 observations) for a
+    stable R^2 sweep. Otherwise falls back to the original method-centroid
+    regression (n = number of methods), which is too noisy below ~20 methods.
+    """
     ax.set_title(f"{panel_letter}. {metric_label} R^2 across cutoffs", loc="left", fontweight="bold")
     ax.set_xlabel("Near-dipolar cutoff (% r.v.)")
     ax.set_ylabel("R^2")
@@ -191,18 +234,43 @@ def _plot_cutoff_r2_panel(
     thresholds = np.arange(1.0, 101.0)
     r2_values: list[float] = []
     p_values: list[float] = []
-    x = plot_df.set_index("method")[metric_col].reindex(methods).to_numpy(dtype=float)
+    n_points: list[int] = []
+
+    use_per_subject = (
+        bench_df is not None
+        and "subject" in bench_df.columns
+        and metric_col in bench_df.columns
+        and "subject" in comp_df.columns
+        and "dipole_residual_variance_percent" in comp_df.columns
+    )
+    if use_per_subject:
+        x_df = (
+            bench_df.loc[bench_df["method"].isin(methods), ["subject", "method", metric_col]]
+            .dropna()
+            .copy()
+        )
+    else:
+        x_centroid = plot_df.set_index("method")[metric_col].reindex(methods).to_numpy(dtype=float)
 
     for cutoff in thresholds:
-        y = _dipole_share_by_method(comp_df, methods, cutoff).reindex(methods).to_numpy(dtype=float)
+        if use_per_subject:
+            y_df = _per_subject_dipole_share(comp_df, methods, cutoff)
+            paired = x_df.merge(y_df, on=["subject", "method"], how="inner")
+            x = paired[metric_col].to_numpy(dtype=float)
+            y = paired["nd_percent"].to_numpy(dtype=float)
+        else:
+            y = _dipole_share_by_method(comp_df, methods, cutoff).reindex(methods).to_numpy(dtype=float)
+            x = x_centroid
         mask = np.isfinite(x) & np.isfinite(y)
         if mask.sum() < 3 or np.ptp(x[mask]) == 0 or np.ptp(y[mask]) == 0:
             r2_values.append(np.nan)
             p_values.append(np.nan)
+            n_points.append(int(mask.sum()))
             continue
         _, _, r, p, _ = stats.linregress(x[mask], y[mask])
         r2_values.append(float(r ** 2))
         p_values.append(float(p))
+        n_points.append(int(mask.sum()))
 
     ax.plot(thresholds, r2_values, color="#1F77B4", lw=1.4, label="R^2")
     finite_p = np.asarray(p_values, dtype=float)
@@ -219,6 +287,15 @@ def _plot_cutoff_r2_panel(
             )
     for cutoff in (5, 10):
         ax.axvline(cutoff, ls=":", color="#888", lw=0.7)
+    if n_points:
+        median_n = int(np.median(n_points))
+        ax.text(
+            0.02, 0.05,
+            f"n = {median_n} pooled (subject, method) points",
+            transform=ax.transAxes,
+            fontsize=7,
+            color="#666",
+        )
     ax.legend(frameon=False, loc="upper right", fontsize=7)
 
 
@@ -476,6 +553,7 @@ def plot_quality_summary(
             "mir_kbits_s",
             panel_letter="B",
             metric_label="MIR",
+            bench_df=bench_df,
         )
     else:
         axes[1].set_title("B. MIR R^2 across cutoffs", loc="left", fontweight="bold")
@@ -518,6 +596,7 @@ def plot_quality_summary(
             "remnant_pmi_percent",
             panel_letter="D",
             metric_label="PMI",
+            bench_df=bench_df,
         )
     else:
         axes[3].set_title("D. PMI R^2 across cutoffs", loc="left", fontweight="bold")
