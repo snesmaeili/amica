@@ -372,14 +372,14 @@ def test_amica_and_mne_use_same_pca_xspace():
     )
 
 
-def test_amica_convergence_trace_healthy():
+def test_amica_convergence_trace_healthy(monkeypatch):
     """Verify a small AMICA fit produces a healthy convergence trace:
     log-likelihood is monotone non-decreasing in >= 90% of steps and ends
     finite. This catches regressions that would make MIR uninterpretable.
     """
     pytest.importorskip("mne")
     pytest.importorskip("amica_python")
-    import mne, os
+    import mne
     rng = np.random.default_rng(22)
     n_ch = 6
     sources_true = rng.standard_t(df=3, size=(n_ch, 3000))
@@ -387,22 +387,27 @@ def test_amica_convergence_trace_healthy():
     X = A @ sources_true
     info = mne.create_info(ch_names=[f"EEG{i}" for i in range(n_ch)], sfreq=100.0, ch_types="eeg")
     raw = mne.io.RawArray(X, info, verbose="ERROR")
-    os.environ["AMICA_NO_JAX"] = "1"
-    os.environ["JAX_PLATFORM_NAME"] = "cpu"
+    monkeypatch.setenv("AMICA_NO_JAX", "1")
+    monkeypatch.setenv("JAX_PLATFORM_NAME", "cpu")
     import importlib, amica_python.backend
     importlib.reload(amica_python.backend)
     from amica_python import fit_ica
-    ica = fit_ica(raw, n_components=n_ch, max_iter=50, random_state=0)
-    result = getattr(ica, "amica_result_", None)
-    assert result is not None, "AMICA fit did not produce amica_result_"
-    ll = np.asarray(result.log_likelihood, dtype=float)
-    assert ll.size >= 5
-    assert np.isfinite(ll[-1])
-    monotone_frac = float(np.sum(np.diff(ll) >= 0)) / float(len(ll) - 1)
-    assert monotone_frac >= 0.8, (
-        f"AMICA log-likelihood is non-monotone in too many steps: {monotone_frac:.2%} monotone "
-        f"(LL trace: {ll})"
-    )
+    try:
+        ica = fit_ica(raw, n_components=n_ch, max_iter=50, random_state=0)
+        result = getattr(ica, "amica_result_", None)
+        assert result is not None, "AMICA fit did not produce amica_result_"
+        ll = np.asarray(result.log_likelihood, dtype=float)
+        assert ll.size >= 5
+        assert np.isfinite(ll[-1])
+        monotone_frac = float(np.sum(np.diff(ll) >= 0)) / float(len(ll) - 1)
+        assert monotone_frac >= 0.8, (
+            f"AMICA log-likelihood is non-monotone in too many steps: {monotone_frac:.2%} monotone "
+            f"(LL trace: {ll})"
+        )
+    finally:
+        monkeypatch.delenv("AMICA_NO_JAX", raising=False)
+        monkeypatch.delenv("JAX_PLATFORM_NAME", raising=False)
+        importlib.reload(amica_python.backend)
 
 
 def test_complete_mir_from_ica_truncated_raises():

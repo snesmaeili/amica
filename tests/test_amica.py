@@ -691,7 +691,7 @@ def test_amica_wrapper(tiny_data):
     assert W2.shape == (4, 4)
 
 
-def test_result_to_mne(tiny_data):
+def test_result_to_mne(tiny_data, monkeypatch):
     """Test AmicaResult.to_mne(info) method."""
     import sys
     from unittest.mock import MagicMock
@@ -700,7 +700,7 @@ def test_result_to_mne(tiny_data):
 
     # Mock MNE so we don't need real raw
     mne_mock = MagicMock()
-    sys.modules["mne"] = mne_mock
+    monkeypatch.setitem(sys.modules, "mne", mne_mock)
 
     class MockICA:
         def __init__(self, **kwargs):
@@ -708,7 +708,7 @@ def test_result_to_mne(tiny_data):
 
     mne_prep_mock = MagicMock()
     mne_prep_mock.ICA = MockICA
-    sys.modules["mne.preprocessing"] = mne_prep_mock
+    monkeypatch.setitem(sys.modules, "mne.preprocessing", mne_prep_mock)
 
     config = AmicaConfig(max_iter=2)
     solver = Amica(config, random_state=42)
