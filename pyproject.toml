@@ -30,9 +30,18 @@ gpu = ["jax[cuda12]>=0.4"]
 mne = ["mne>=1.0"]
 icalabel = ["mne-icalabel>=0.4"]
 viz = ["matplotlib>=3.5"]
+benchmark = [
+    "amica-python[mne,icalabel,viz]",
+    "pandas>=2.0",
+    "scipy>=1.7",
+    "scikit-learn>=1.0",
+    "python-picard>=0.7",
+    "tabulate>=0.9",
+    "onnxruntime>=1.15",
+]
 test = ["pytest>=7.0", "pytest-cov", "pytest-xdist"]
 dev = ["amica-python[test]", "sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme", "myst-parser", "pre-commit>=3.0", "ruff>=0.9", "towncrier>=23.0", "nox"]
-all = ["jax>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4"]
+all = ["jax>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "amica-python[benchmark]"]
 
 [dependency-groups]
 test = [
