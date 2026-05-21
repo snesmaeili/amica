@@ -621,12 +621,14 @@ def plot_quality_summary(
     plt.close(fig)
     caption = (
         "Figure 2. Frank 2022 style decomposition-quality summary.\n"
-        "A: mean MIR (kbits/sec) vs near-dipolar component share. B: R^2 of "
-        "MIR vs near-dipolar share across residual-variance cutoffs. C: "
-        "remnant pairwise mutual information vs near-dipolar share. D: R^2 "
-        "of remnant pairwise mutual information vs near-dipolar share across "
-        "residual-variance cutoffs. Each point is the across-subject method "
-        "centroid for the same input dataset.\n"
+        "Panels A and C: each point is the across-subject method centroid "
+        "(one dot per ICA method) for the same input dataset; A plots mean "
+        "MIR (kbits/sec) vs near-dipolar component share, C plots remnant "
+        "pairwise mutual information vs near-dipolar share. Panels B and D: "
+        "R^2 of the corresponding metric (MIR for B, remnant PMI for D) vs "
+        "near-dipolar share, regressed on per-(subject, method) points "
+        "(n ~= n_subjects * n_methods) at each residual-variance cutoff, "
+        "so the cutoff sweep is statistically stable even with few methods.\n"
     )
     if not have_complete_dipoles:
         caption += (
@@ -808,7 +810,7 @@ def plot_amica_convergence(iter_df: pd.DataFrame, out_dir: Path, captions_dir: P
     if n_subjects > 1:
         med = df.groupby("iteration")["log_likelihood"].median()
         axes[0].plot(med.index, med.values, lw=2.0, color="#D7263D", label="median")
-    for axv in (50, 250, 1000, 2000, 3000):
+    for axv in (50, 250, 1000, 2000, 5000):
         if df["iteration"].max() >= axv:
             axes[0].axvline(axv, ls="--", color="#888", lw=0.6)
             axes[0].text(axv, axes[0].get_ylim()[1], f" {axv}", color="#888", fontsize=7, va="top")
@@ -839,7 +841,10 @@ def plot_amica_convergence(iter_df: pd.DataFrame, out_dir: Path, captions_dir: P
         "Figure 7. AMICA log-likelihood convergence trace. Panel A: LL vs "
         "iteration, one line per subject; thick line is the across-subject "
         "median when n_subjects > 1. Vertical dashed lines at 50, 250, 1000, "
-        "2000, 3000 mark the iteration milestones used in Frank 2023. Panel "
+        "2000, 5000 mark the iteration milestones used in Frank 2023 "
+        "(50 = default Newton start; 250 = large-ΔMIR cliff; 1000 = PMI "
+        "plateau begins; 2000 = EEGLAB default max_iter; 5000 = Frank 2023 "
+        "study cap, also used in Frank 2025). Panel "
         "B: per-iteration LL improvement (Δ LL) -- an optimisation-progress "
         "diagnostic, NOT a direct measurement of MIR or PMI gain (Frank 2023 "
         "plots MIR/PMI per iteration via fit-loop checkpoints which we do not "

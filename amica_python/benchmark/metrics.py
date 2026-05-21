@@ -165,7 +165,7 @@ def mean_pairwise_mi(X: np.ndarray, **kwargs) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Complete MIR (Frank 2022 eq. 5)
+# Complete MIR (Frank 2022 eq. 7)
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -308,9 +308,9 @@ def complete_mir(
                 raise ValueError("W is singular (det = 0); cannot compute MIR.")
             log2_abs_det_W = float(logabsdet / np.log(2.0))
             det_note = (
-                "subspace MIR (Frank 2022 eq. 5) computed in retained PCA-whitened space."
+                "subspace MIR (Frank 2022 eq. 7) computed in retained PCA-whitened space."
                 if subspace_mode
-                else "full-rank MIR (Frank 2022 eq. 5)."
+                else "full-rank MIR (Frank 2022 eq. 7)."
             )
 
     h_input = float(sum(entropy_histogram(X_sub[i], n_bins=n_bins, clip_sd=clip_sd) for i in range(X_sub.shape[0])))
