@@ -820,37 +820,51 @@ def plot_data_sufficiency(bench_df: pd.DataFrame, out_dir: Path, captions_dir: P
     Uses :func:`amica_python.benchmark.schema.kappa_table` to fetch verdicts;
     reference lines at the canonical κ=20 / 30 (Delorme 2012) / 50 (Frank 2025).
     """
+    from matplotlib.patches import Patch
     from ..schema import kappa_table, KAPPA_TARGET_MINIMUM, KAPPA_TARGET_PAPER
     set_paper_style()
     df = bench_df.dropna(subset=["kappa_channels", "kappa_effective"]).copy()
     if df.empty:
         return None, "no kappa data"
     df = df.drop_duplicates(subset=["subject"]).sort_values("subject")
-    kt = kappa_table(df)
-    fig, ax = plt.subplots(figsize=(7.5, 4.0))
+    kt = kappa_table(df).set_index("subject")
+    fig, ax = plt.subplots(figsize=(11.0, 4.8))
     x = np.arange(len(df))
     width = 0.35
-    ax.bar(x - width / 2, df["kappa_channels"], width, color="#4477AA", label="κ_channels")
-    ax.bar(x + width / 2, df["kappa_effective"], width, color="#EE6677", label="κ_effective")
+    verdict_colors = {
+        "below_delorme_min": "#C44",
+        "meets_delorme_min": "#D88",
+        "paper_grade": "#2A9D8F",
+    }
+    edge_colors = [verdict_colors.get(kt.loc[s, "verdict"], "#888") if s in kt.index else "#888"
+                   for s in df["subject"]]
+    ax.bar(x - width / 2, df["kappa_channels"], width,
+           color="#4477AA", edgecolor=edge_colors, linewidth=1.5, label="κ_channels")
+    ax.bar(x + width / 2, df["kappa_effective"], width,
+           color="#EE6677", edgecolor=edge_colors, linewidth=1.5, label="κ_effective")
+    # Reference lines + labels anchored to LEFT inside the plot area (no collision with bars).
     for thr, name in [
         (20, "κ=20"),
         (KAPPA_TARGET_MINIMUM, f"κ={KAPPA_TARGET_MINIMUM} (Delorme 2012 min)"),
         (KAPPA_TARGET_PAPER,   f"κ={KAPPA_TARGET_PAPER} (Frank 2025 paper-grade)"),
     ]:
         ax.axhline(thr, ls="--", color="#888", lw=0.7)
-        ax.text(len(df) - 0.5, thr, f" {name}", color="#888", fontsize=7, va="bottom")
-    # Verdict tags below x-axis
-    for i, sub in enumerate(df["subject"]):
-        row = kt.loc[kt["subject"] == sub]
-        if not row.empty:
-            verdict = row["verdict"].iloc[0]
-            tag_color = {"below_delorme_min": "#C44", "meets_delorme_min": "#D88", "paper_grade": "#2A9D8F"}.get(verdict, "#888")
-            ax.text(i, -2.5, verdict, ha="center", va="top", fontsize=7, color=tag_color, fontweight="bold")
+        ax.text(-0.5, thr, f" {name}", color="#888", fontsize=7, va="bottom", ha="left")
     ax.set_xticks(x)
-    ax.set_xticklabels(df["subject"].astype(str), rotation=0)
+    ax.set_xticklabels(df["subject"].astype(str), rotation=45, ha="right", fontsize=8)
+    ax.set_xlim(-1.0, len(df) - 0.5)
     ax.set_ylabel("κ = n_samples / n²")
+    ax.set_xlabel("Subject")
     ax.set_title("Figure 8. Data-sufficiency κ diagnostic (Frank 2025)", loc="left", fontweight="bold")
-    ax.legend(frameon=False, loc="upper left")
+    # Two-block legend: kappa bars + verdict swatches (bar edge color).
+    handles = [
+        Patch(facecolor="#4477AA", label="κ_channels"),
+        Patch(facecolor="#EE6677", label="κ_effective"),
+        Patch(facecolor="white", edgecolor=verdict_colors["below_delorme_min"], linewidth=1.5, label="below Delorme min"),
+        Patch(facecolor="white", edgecolor=verdict_colors["meets_delorme_min"], linewidth=1.5, label="meets Delorme min"),
+        Patch(facecolor="white", edgecolor=verdict_colors["paper_grade"],       linewidth=1.5, label="paper-grade"),
+    ]
+    ax.legend(handles=handles, frameon=False, loc="upper right", ncol=1, fontsize=8)
     fig.tight_layout()
     _apply_run_mode_banner(fig, bench_df)
     paths = _save(fig, out_dir, "fig08_kappa_sufficiency")
