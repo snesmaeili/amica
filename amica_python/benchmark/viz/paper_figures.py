@@ -1111,6 +1111,100 @@ def plot_paired_mir_difference(
     return Path(paths[0]), caption
 
 
+def plot_kappa_subsampling(
+    kappa_df: pd.DataFrame,
+    out_dir: Path,
+    captions_dir: Path,
+    *,
+    metric_col: str = "mir_kbits_s",
+    dipolarity_col: str = "nd_5_percent",
+) -> tuple[Path | None, str]:
+    """Figure 10 (Frank 2025 Fig 3 style): MIR + near-dipolar share vs κ.
+
+    Two-panel figure showing how AMICA decomposition quality scales with
+    data-sufficiency κ = n_samples / n_channels². Each subject contributes a
+    line across the κ values where it has a fit; thick line is the
+    across-subject median. Reference verticals at κ = 20 / 30 (Delorme 2012)
+    / 50 (Frank 2025 high-data regime).
+
+    Parameters
+    ----------
+    kappa_df : pandas.DataFrame
+        Output of :func:`amica_python.benchmark.aggregate.kappa_subsampling_table`.
+        Must contain at minimum ``subject, kappa_channels, mir_kbits_s,
+        nd_5_percent``.
+    out_dir, captions_dir : path-like
+        Figure and caption destinations.
+    metric_col : str
+        Column for the top panel (default: ``mir_kbits_s``).
+    dipolarity_col : str
+        Column for the bottom panel (default: ``nd_5_percent``).
+    """
+    set_paper_style()
+    if kappa_df is None or kappa_df.empty:
+        return None, "no κ-subsampling data"
+    needed = {"subject", "kappa_channels", metric_col, dipolarity_col}
+    if not needed.issubset(kappa_df.columns):
+        return None, f"missing required columns for kappa-subsampling: {needed - set(kappa_df.columns)}"
+    df = kappa_df.dropna(subset=["kappa_channels", metric_col, dipolarity_col]).copy()
+    if df.empty:
+        return None, "no rows with finite κ + metric + dipolarity"
+
+    fig, axes = plt.subplots(2, 1, figsize=(7.5, 6.4), sharex=True)
+    subjects = sorted(df["subject"].unique())
+    rng = np.random.default_rng(0)
+    palette = plt.get_cmap("viridis", max(len(subjects), 1))
+
+    for i, sub in enumerate(subjects):
+        sdf = df[df["subject"] == sub].sort_values("kappa_channels")
+        color = palette(i)
+        axes[0].plot(sdf["kappa_channels"], sdf[metric_col], "-o", color=color, alpha=0.45, lw=0.9, ms=3)
+        axes[1].plot(sdf["kappa_channels"], sdf[dipolarity_col], "-o", color=color, alpha=0.45, lw=0.9, ms=3)
+
+    # Across-subject median (more robust than mean for small n)
+    med = df.groupby("kappa_channels").agg(metric=(metric_col, "median"), nd=(dipolarity_col, "median")).reset_index()
+    if len(med) > 1:
+        axes[0].plot(med["kappa_channels"], med["metric"], "-", color="#D7263D", lw=2.4, label="across-subject median")
+        axes[1].plot(med["kappa_channels"], med["nd"], "-", color="#D7263D", lw=2.4, label="across-subject median")
+
+    for ax in axes:
+        for thr, name in [(20, "κ=20"), (30, "κ=30 (Delorme min)"), (50, "κ=50 (Frank 2025 high-data)")]:
+            ax.axvline(thr, ls="--", color="#888", lw=0.6)
+        ax.set_xscale("log")
+    axes[0].set_ylabel("MIR (kbits/sec)")
+    axes[0].set_title("A. MIR vs κ (data-sufficiency)", loc="left", fontweight="bold")
+    axes[1].set_ylabel(f"Near-dipolar share (% with r.v. ≤ 5)")
+    axes[1].set_title("B. Near-dipolar component share vs κ", loc="left", fontweight="bold")
+    axes[1].set_xlabel("κ_channels = n_samples / n_channels²  (log scale)")
+    axes[0].legend(frameon=False, loc="lower right", fontsize=8)
+    fig.suptitle("Figure 10. AMICA quality vs data-sufficiency κ (Frank 2025 Fig 3 style)",
+                 fontweight="bold", y=1.005)
+    fig.tight_layout()
+    _apply_run_mode_banner(fig, kappa_df, y=1.025)
+    paths = _save(fig, out_dir, "fig10_kappa_subsampling")
+    plt.close(fig)
+    n_subjects = int(df["subject"].nunique())
+    kappa_values = sorted(df["kappa_channels"].dropna().unique())
+    caption = (
+        "Figure 10. AMICA decomposition quality as a function of data-sufficiency "
+        "κ = n_samples / n_channels². Each subject contributes one line "
+        "(coloured by subject); thick red line is the across-subject median. "
+        f"n_subjects = {n_subjects}; κ values sampled at "
+        f"{', '.join(f'{k:.1f}' for k in kappa_values)}. Panel A: complete MIR "
+        "(kbits/sec, Frank 2022 eq. 7) versus κ. Panel B: percentage of ICs "
+        "with single-equivalent-dipole residual variance ≤ 5% (Delorme 2012 "
+        "near-dipolar criterion) versus κ. Reference verticals at κ = 20, "
+        "κ = 30 (Delorme 2012 minimum), κ = 50 (Frank 2025 high-data regime). "
+        "Frank 2025 reports no clear plateau in either metric across the "
+        "tested κ range; this figure tests whether our pipeline reproduces "
+        "that monotone-improvement finding on ds004505. Requires AMICA fits "
+        "at multiple data fractions per subject (see "
+        "submit_jax_gpu_kappa_v3.sh)."
+    )
+    _write_caption(captions_dir, "fig10_kappa_subsampling", caption, bench_df=kappa_df)
+    return Path(paths[0]), caption
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results-dir", required=True, type=Path)

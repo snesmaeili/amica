@@ -316,6 +316,111 @@ def summary_table(results_dir, subject=None, *, prefer_fixed=True):
     return pd.DataFrame(rows).sort_values(["subject", "method"]).reset_index(drop=True)
 
 
+def kappa_subsampling_table(
+    results_root,
+    *,
+    backend: str = "jax",
+    device: str = "gpu",
+    nd_cutoffs=(5.0, 10.0),
+):
+    """Long-format DataFrame for Frank 2025 Fig 3 (MIR/dipolarity vs kappa).
+
+    Walks ``results_root/dur_*/benchmark_sub-*_hp*_<backend>_<device>.json`` and
+    returns one row per (subject, duration) pair with:
+
+      subject, duration_sec, n_samples, kappa_channels, kappa_effective,
+      n_iter, mir_kbits_s, mir_bits_per_sample, remnant_pmi_percent,
+      nd_5_percent, nd_10_percent
+
+    The expected layout (produced by ``submit_jax_gpu_kappa_v3.sh``) is::
+
+      results_root/
+        dur_0288/
+          benchmark_sub-01_hp1.0hz_jax_gpu.json
+          benchmark_sub-01_hp1.0hz_jax_gpu_ica.fif
+          ...
+        dur_0576/
+          ...
+
+    Parameters
+    ----------
+    results_root : path-like
+        Top-level dir containing ``dur_<seconds>/`` subdirectories.
+    backend, device : str
+        Which AMICA backend to aggregate. Defaults match the canonical
+        H100 paper-mode run (jax / gpu).
+    nd_cutoffs : tuple of float, optional
+        Residual-variance cutoffs at which to compute near-dipolar
+        component share. Each cutoff produces an ``nd_<X>_percent`` column.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per (subject, duration_sec) pair.
+    """
+    results_root = Path(results_root)
+    if not results_root.exists():
+        return pd.DataFrame()
+    suffix = f"_{backend}_{device}.json"
+    rows = []
+    for dur_dir in sorted(results_root.glob("dur_*")):
+        if not dur_dir.is_dir():
+            continue
+        try:
+            duration_sec = int(dur_dir.name.removeprefix("dur_"))
+        except ValueError:
+            continue
+        for json_path in sorted(dur_dir.glob(f"benchmark_sub-*{suffix}")):
+            if "_ica.fif" in json_path.name:
+                continue
+            try:
+                doc = json.loads(json_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            data = doc.get("_data", {}) or {}
+            method_key = next(
+                (k for k in ("amica", "picard", "fastica", "infomax") if k in doc),
+                None,
+            )
+            if method_key is None:
+                continue
+            block = doc.get(method_key, {}) or {}
+            cm = block.get("complete_mir", {}) or {}
+            pmi = block.get("pmi", {}) or {}
+            dip = block.get("dipolarity", {}) or {}
+            rho_per_ic = dip.get("rho_per_ic") if isinstance(dip, dict) else None
+            row = {
+                "subject": data.get("subject"),
+                "duration_sec": duration_sec,
+                "duration_min": duration_sec / 60.0,
+                "n_samples": int(data.get("n_samples", 0) or 0),
+                "n_channels": int(data.get("n_channels", 0) or 0),
+                "n_components": int(block.get("n_components", 0) or 0),
+                "kappa_channels": float(data.get("kappa_channels", float("nan"))),
+                "kappa_effective": float(data.get("kappa_effective", float("nan"))),
+                "n_iter": int(block.get("n_iter", 0) or 0),
+                "runtime_s": float(block.get("runtime_s", float("nan"))),
+                "mir_bits_per_sample": cm.get("bits_per_sample", float("nan")) if "error" not in cm else float("nan"),
+                "mir_kbits_s": cm.get("kbits_per_sec", float("nan")) if "error" not in cm else float("nan"),
+                "remnant_pmi_percent": pmi.get("remnant_PMI_percent", float("nan")) if "error" not in pmi else float("nan"),
+            }
+            # Near-dipolar % at each requested RV cutoff (None-safe).
+            if rho_per_ic:
+                rv = np.asarray([r for r in rho_per_ic if r is not None], dtype=float)
+                for c in nd_cutoffs:
+                    key = f"nd_{int(c) if float(c).is_integer() else c}_percent"
+                    row[key] = float(100.0 * (rv <= c).mean()) if rv.size else float("nan")
+            else:
+                for c in nd_cutoffs:
+                    key = f"nd_{int(c) if float(c).is_integer() else c}_percent"
+                    row[key] = float("nan")
+            rows.append(row)
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values(["subject", "duration_sec"]).reset_index(drop=True)
+    return df
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results-dir", required=True, type=Path)

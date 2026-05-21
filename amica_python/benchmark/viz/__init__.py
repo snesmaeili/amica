@@ -19,6 +19,7 @@ from .paper_figures import (
     plot_runtime_summary,
     plot_amica_convergence,
     plot_data_sufficiency,
+    plot_kappa_subsampling,
     plot_paired_mir_difference,
     plot_tolerance_sweep,
 )
@@ -81,6 +82,7 @@ __all__ = [
     "plot_runtime_summary",
     "plot_amica_convergence",
     "plot_data_sufficiency",
+    "plot_kappa_subsampling",
     "plot_paired_mir_difference",
     "plot_tolerance_sweep",
     # headline 6-panel
