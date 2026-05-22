@@ -53,6 +53,7 @@ docs/auto_examples/
 # Environments
 .env
 .venv
+.venv*/
 env/
 venv/
 ENV/
@@ -74,6 +75,9 @@ Icon
 
 # Project specific
 validation/
+results/
+scripts/cc_benchmark/results/
+.matlab_engine_src/
 logs/
 *.fdt
 *.set

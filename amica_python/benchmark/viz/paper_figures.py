@@ -56,20 +56,125 @@ def _color_for(method: str) -> str:
     return METHOD_COLORS.get(method, "#444444")
 
 
+def _markdown_table(df: pd.DataFrame, *, floatfmt: str = ".4g") -> str:
+    """Small dependency-free fallback for the paper table markdown export."""
+    if df.empty:
+        return ""
+
+    def fmt(value):
+        if isinstance(value, (float, np.floating)):
+            return format(float(value), floatfmt) if np.isfinite(value) else ""
+        if pd.isna(value):
+            return ""
+        return str(value)
+
+    columns = [str(col) for col in df.columns]
+    rows = ["| " + " | ".join(columns) + " |"]
+    rows.append("| " + " | ".join(["---"] * len(columns)) + " |")
+    for _, row in df.iterrows():
+        rows.append("| " + " | ".join(fmt(row[col]) for col in df.columns) + " |")
+    return "\n".join(rows) + "\n"
+
+
 def _display_method_name(method: str) -> str:
     """Short labels that remain readable on paper figures."""
     labels = {
         "AMICA-Python (JAX-GPU)": "AMICA JAX-GPU",
+        "AMICA-Python (JAX-CPU)": "AMICA JAX-CPU",
         "AMICA-Python (NumPy-CPU)": "AMICA NumPy-CPU",
-        "AMICA-Python": "AMICA",
+        "AMICA-Python": "AMICA-Python",
     }
     return labels.get(str(method), str(method))
+
+
+def _is_amica_method(method: str) -> bool:
+    return str(method).startswith("AMICA-Python")
+
+
+def _method_line_style(method: str, index: int = 0) -> dict:
+    """Consistent line treatment for overlapping method curves."""
+    styles = {
+        "AMICA-Python (JAX-GPU)": {"linestyle": "-", "linewidth": 2.4, "alpha": 0.96, "zorder": 6},
+        "AMICA-Python (JAX-CPU)": {"linestyle": (0, (4, 2)), "linewidth": 2.1, "alpha": 0.9, "zorder": 5},
+        "AMICA-Python (NumPy-CPU)": {"linestyle": (0, (1, 1.4)), "linewidth": 2.2, "alpha": 0.88, "zorder": 4},
+        "FastICA": {"linestyle": "-", "linewidth": 1.8, "alpha": 0.82, "zorder": 3},
+        "Infomax": {"linestyle": (0, (5, 2, 1.2, 2)), "linewidth": 1.8, "alpha": 0.82, "zorder": 2},
+        "Picard": {"linestyle": (0, (3, 2)), "linewidth": 1.8, "alpha": 0.82, "zorder": 2},
+    }
+    default_styles = [
+        "-", (0, (4, 2)), (0, (1, 1.4)), (0, (5, 2, 1.2, 2)), (0, (3, 2)),
+    ]
+    return {
+        "linestyle": default_styles[index % len(default_styles)],
+        "linewidth": 1.8,
+        "alpha": 0.82,
+        "zorder": 2,
+        **styles.get(str(method), {}),
+    }
 
 
 def _combine_display_labels(labels: list[str]) -> str:
     if len(labels) > 1 and all(label.startswith("AMICA ") for label in labels):
         return "AMICA " + " / ".join(label.replace("AMICA ", "", 1) for label in labels)
     return " / ".join(labels)
+
+
+def _figure2_algorithm_name(method: str) -> str:
+    """Collapse backend-equivalent AMICA rows for Frank 2022-style quality plots."""
+    method = str(method)
+    return "AMICA-Python" if method.startswith("AMICA-Python") else method
+
+
+def _algorithm_summary_for_quality(bench_df: pd.DataFrame) -> pd.DataFrame:
+    """Across-subject algorithm means for Figure 2.
+
+    Figure 2 follows Frank 2022's algorithm-comparison framing. AMICA JAX-GPU
+    and NumPy-CPU are backend-parity checks, not independent ICA algorithms, so
+    they are collapsed to one AMICA point and one subject-algorithm observation
+    per subject in the cutoff regressions.
+    """
+    if "method" not in bench_df.columns:
+        return pd.DataFrame()
+    numeric_cols = [
+        c
+        for c in (
+            "mir_kbits_s",
+            "remnant_pmi_percent",
+            "fit_runtime_s",
+            "iclabel_brain_percent",
+            "n_iter_actual",
+            "max_iter",
+        )
+        if c in bench_df.columns
+    ]
+    if not numeric_cols:
+        return pd.DataFrame()
+
+    df = bench_df.copy()
+    df["method"] = df["method"].map(_figure2_algorithm_name)
+    grouped = df[["method"] + numeric_cols].groupby("method", sort=False, dropna=False)
+    mean = grouped.mean(numeric_only=True).reset_index()
+    std = grouped.std(numeric_only=True).add_suffix("_std").reset_index()
+    summary = mean.merge(std, on="method", how="left")
+    if "subject" in df.columns:
+        n_subjects = (
+            df.groupby("method", sort=False, dropna=False)["subject"]
+            .nunique()
+            .rename("n_subjects")
+            .reset_index()
+        )
+    else:
+        n_subjects = grouped.size().rename("n_subjects").reset_index()
+    summary = summary.merge(n_subjects, on="method", how="left")
+
+    display_labels = {}
+    for method, mdf in bench_df.assign(
+        algorithm=bench_df["method"].map(_figure2_algorithm_name)
+    ).groupby("algorithm", sort=False):
+        labels = [_display_method_name(m) for m in sorted(mdf["method"].dropna().unique())]
+        display_labels[method] = _combine_display_labels(labels) if len(labels) > 1 else _display_method_name(method)
+    summary["display_label"] = summary["method"].map(display_labels).fillna(summary["method"].map(_display_method_name))
+    return summary
 
 
 def _method_summary(bench_df: pd.DataFrame) -> pd.DataFrame:
@@ -129,6 +234,7 @@ def _dipole_share_by_method(comp_df: pd.DataFrame, methods: list[str], cutoff: f
 
 def _annotate_method_points(ax, plot_df: pd.DataFrame, x_col: str, y_col: str) -> None:
     """Annotate points once per rounded coordinate to avoid co-located labels."""
+    label_bbox = dict(facecolor="white", edgecolor="none", alpha=0.82, pad=1.2)
     amica_df = plot_df[plot_df["display_label"].astype(str).str.startswith("AMICA ")]
     merged_amica = (
         len(amica_df) > 1
@@ -156,6 +262,7 @@ def _annotate_method_points(ax, plot_df: pd.DataFrame, x_col: str, y_col: str) -
             textcoords="offset points",
             ha=ha, va=va,
             fontsize=7,
+            bbox=label_bbox,
         )
         plot_df = plot_df.loc[~plot_df.index.isin(amica_df.index)]
 
@@ -174,14 +281,19 @@ def _annotate_method_points(ax, plot_df: pd.DataFrame, x_col: str, y_col: str) -
         x, y = coords[key]
         x0, x1 = ax.get_xlim()
         y0, y1 = ax.get_ylim()
-        dx = 5 if x < x0 + 0.35 * (x1 - x0) else -18
-        dy = 5 if y < y0 + 0.75 * (y1 - y0) else -12
+        on_left = x < x0 + 0.35 * (x1 - x0)
+        near_top = y >= y0 + 0.75 * (y1 - y0)
+        dx = 5 if on_left else -18
+        dy = 5 if not near_top else -12
         ax.annotate(
             _combine_display_labels(labels),
             (x, y),
             xytext=(dx, dy),
             textcoords="offset points",
+            ha="left" if on_left else "right",
+            va="bottom" if not near_top else "top",
             fontsize=7,
+            bbox=label_bbox,
         )
 
 
@@ -247,7 +359,8 @@ def _plot_cutoff_r2_panel(
         x_df = (
             bench_df.loc[bench_df["method"].isin(methods), ["subject", "method", metric_col]]
             .dropna()
-            .copy()
+            .groupby(["subject", "method"], as_index=False)[metric_col]
+            .mean()
         )
     else:
         x_centroid = plot_df.set_index("method")[metric_col].reindex(methods).to_numpy(dtype=float)
@@ -272,31 +385,42 @@ def _plot_cutoff_r2_panel(
         p_values.append(float(p))
         n_points.append(int(mask.sum()))
 
-    ax.plot(thresholds, r2_values, color="#1F77B4", lw=1.4, label="R^2")
+    r2_line, = ax.plot(thresholds, r2_values, color="#1F77B4", lw=1.4, label="R^2")
+    ax.set_ylim(0.0, 1.0)
     finite_p = np.asarray(p_values, dtype=float)
+    p_line = None
     if np.isfinite(finite_p).any():
         p_trace = -np.log10(np.clip(finite_p, 1e-300, 1.0))
         if np.nanmax(p_trace) > 0:
-            ax.plot(
+            ax_p = ax.twinx()
+            p_line, = ax_p.plot(
                 thresholds,
-                p_trace / np.nanmax(p_trace),
+                p_trace,
                 color="#C76922",
                 lw=1.0,
                 ls="--",
-                label="-log10(p), scaled",
+                label="-log10(p)",
             )
+            ax_p.set_ylabel("-log10(p)", color="#C76922")
+            ax_p.tick_params(axis="y", colors="#C76922")
+            ax_p.spines["right"].set_color("#C76922")
+            ax_p.set_ylim(0.0, max(1.0, float(np.nanmax(p_trace)) * 1.08))
     for cutoff in (5, 10):
         ax.axvline(cutoff, ls=":", color="#888", lw=0.7)
     if n_points:
         median_n = int(np.median(n_points))
         ax.text(
-            0.02, 0.05,
-            f"n = {median_n} pooled (subject, method) points",
+            0.04, 0.88,
+            f"n = {median_n} pooled\nsubject-algorithm points",
             transform=ax.transAxes,
             fontsize=7,
             color="#666",
+            va="top",
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.82, pad=1.2),
         )
-    ax.legend(frameon=False, loc="upper right", fontsize=7)
+    handles = [r2_line] + ([p_line] if p_line is not None else [])
+    labels = [h.get_label() for h in handles]
+    ax.legend(handles, labels, frameon=False, loc="upper right", fontsize=7)
 
 
 def _write_caption(captions_dir: Path, stem: str, text: str, *, bench_df: "pd.DataFrame | None" = None):
@@ -375,19 +499,77 @@ def plot_cumulative_dipolarity(
     components passing increasing ICLabel-brain probability thresholds.
     """
     set_paper_style()
+    method_order = []
+    if "method" in bench_df.columns:
+        method_order = [m for m in bench_df["method"].dropna().drop_duplicates().tolist()]
+    if "method" in comp_df.columns:
+        for method in comp_df["method"].dropna().drop_duplicates().tolist():
+            if method not in method_order:
+                method_order.append(method)
     have_dipole = comp_df["dipole_residual_variance_percent"].notna().any()
-    fig, ax = plt.subplots(figsize=(6.0, 4.4))
     if have_dipole:
+        fig = plt.figure(figsize=(10.2, 4.8))
+        gs = fig.add_gridspec(
+            2,
+            2,
+            width_ratios=[1.55, 1.0],
+            height_ratios=[0.70, 0.30],
+            wspace=0.34,
+            hspace=0.36,
+        )
+        ax = fig.add_subplot(gs[:, 0])
+        delta_ax = fig.add_subplot(gs[0, 1])
+        table_ax = fig.add_subplot(gs[1, 1])
+        table_ax.axis("off")
         stem = "fig01_cumulative_dipolarity"
         rv_grid = np.logspace(np.log10(1.0), np.log10(100.0), 200)
         plotted_methods = []
-        for method, mdf in comp_df.groupby("method"):
+        curves = []
+        for i, method in enumerate(method_order):
+            mdf = comp_df[comp_df["method"] == method]
             rv = mdf["dipole_residual_variance_percent"].dropna().to_numpy()
             if rv.size == 0:
                 continue
             plotted_methods.append(method)
             pct = np.array([100.0 * (rv <= t).mean() for t in rv_grid])
-            ax.plot(rv_grid, pct, label=method, color=_color_for(method), lw=2.0)
+            curves.append(
+                {
+                    "methods": [method],
+                    "pct": pct,
+                    "pct5": 100.0 * (rv <= 5.0).mean(),
+                    "pct10": 100.0 * (rv <= 10.0).mean(),
+                    "style_index": i,
+                    "n_grouped": 1,
+                }
+            )
+        curve_groups = []
+        for curve in curves:
+            duplicate = None
+            for group in curve_groups:
+                both_amica = _is_amica_method(group["methods"][0]) and _is_amica_method(curve["methods"][0])
+                tolerance = 0.10 if both_amica else 1e-9
+                if both_amica or np.allclose(group["pct"], curve["pct"], rtol=0.0, atol=tolerance):
+                    duplicate = group
+                    break
+            if duplicate is None:
+                curve_groups.append({**curve})
+            else:
+                n_old = duplicate["n_grouped"]
+                n_new = n_old + 1
+                duplicate["pct"] = (duplicate["pct"] * n_old + curve["pct"]) / n_new
+                duplicate["pct5"] = (duplicate["pct5"] * n_old + curve["pct5"]) / n_new
+                duplicate["pct10"] = (duplicate["pct10"] * n_old + curve["pct10"]) / n_new
+                duplicate["n_grouped"] = n_new
+                duplicate["methods"].extend(curve["methods"])
+        for group in curve_groups:
+            labels = [_display_method_name(method) for method in group["methods"]]
+            if len(labels) > 1 and all(_is_amica_method(method) for method in group["methods"]):
+                label = "AMICA-Python backends"
+            else:
+                label = _combine_display_labels(labels) if len(labels) > 1 else labels[0]
+            method = group["methods"][0]
+            style = _method_line_style(method, group["style_index"])
+            ax.plot(rv_grid, group["pct"], label=label, color=_color_for(method), **style)
         ax.set_xscale("log")
         ax.set_xticks([1, 5, 10, 20, 100])
         ax.set_xticklabels(["1", "5", "10", "20", "100"])
@@ -396,14 +578,109 @@ def plot_cumulative_dipolarity(
         ax.set_ylim(0, 100)
         for thr in (5, 10):
             ax.axvline(thr, ls="--", color="#888", lw=0.7)
-        ax.set_title("Figure 1. Cumulative near-dipolar components", loc="left", fontweight="bold")
+        ax.set_title("Figure 1. A. Cumulative near-dipolar components", loc="left", fontweight="bold")
+        ax.legend(frameon=False, loc="upper left", fontsize=8)
+
+        zoom_mask = (rv_grid >= 1.0) & (rv_grid <= 15.0)
+        amica_curves = [curve["pct"] for curve in curves if _is_amica_method(curve["methods"][0])]
+        if amica_curves:
+            reference_pct = np.mean(np.vstack(amica_curves), axis=0)
+            reference_label = "AMICA-Python"
+        else:
+            reference_pct = curve_groups[0]["pct"]
+            reference_label = _display_method_name(curve_groups[0]["methods"][0])
+        delta_values = [np.zeros(int(zoom_mask.sum()))]
+        delta_ax.axhline(
+            0,
+            color="#777",
+            lw=0.9,
+            label=f"{reference_label} reference",
+            zorder=1,
+        )
+        for group in curve_groups:
+            if amica_curves and all(_is_amica_method(method) for method in group["methods"]):
+                continue
+            labels = [_display_method_name(method) for method in group["methods"]]
+            if len(labels) > 1 and all(_is_amica_method(method) for method in group["methods"]):
+                label = "AMICA-Python backends"
+            else:
+                label = _combine_display_labels(labels) if len(labels) > 1 else labels[0]
+            method = group["methods"][0]
+            style = _method_line_style(method, group["style_index"])
+            delta = group["pct"] - reference_pct
+            delta_values.append(delta[zoom_mask])
+            delta_ax.plot(
+                rv_grid[zoom_mask],
+                delta[zoom_mask],
+                label=label,
+                color=_color_for(method),
+                **style,
+            )
+        for thr in (5, 10):
+            delta_ax.axvline(thr, ls="--", color="#999", lw=0.6)
+        delta_ax.set_xscale("log")
+        delta_ax.set_xlim(1, 15)
+        delta_ax.set_xticks([1, 5, 10, 15])
+        delta_ax.set_xticklabels(["1", "5", "10", "15"])
+        if delta_values:
+            max_abs_delta = float(np.nanmax(np.abs(np.concatenate(delta_values))))
+            max_abs_delta = max(0.25, max_abs_delta)
+            delta_ax.set_ylim(-1.15 * max_abs_delta, 1.15 * max_abs_delta)
+        delta_ax.set_xlabel("Residual variance (%)")
+        delta_ax.set_ylabel("Δ cumulative % points")
+        delta_ax.set_title(f"B. Difference vs {reference_label}", loc="left", fontweight="bold")
+        delta_ax.legend(frameon=False, fontsize=7, loc="best")
+
+        if curve_groups:
+            table_label_map = {
+                "AMICA JAX-GPU": "AMICA GPU",
+                "AMICA JAX-CPU": "AMICA JAX-CPU",
+                "AMICA NumPy-CPU": "AMICA NumPy",
+                "AMICA-Python backends": "AMICA-Python",
+            }
+            cutoff_rows = []
+            for group in curve_groups:
+                labels = [_display_method_name(method) for method in group["methods"]]
+                if len(labels) > 1 and all(_is_amica_method(method) for method in group["methods"]):
+                    label = "AMICA-Python backends"
+                else:
+                    label = _combine_display_labels(labels) if len(labels) > 1 else labels[0]
+                cutoff_rows.append((label, group["pct5"], group["pct10"]))
+            table_rows = [
+                [table_label_map.get(label, label), f"{pct5:.1f}", f"{pct10:.1f}"]
+                for label, pct5, pct10 in cutoff_rows
+            ]
+            table = table_ax.table(
+                cellText=table_rows,
+                colLabels=["Method", "<=5%", "<=10%"],
+                cellLoc="left",
+                colLoc="left",
+                colWidths=[0.56, 0.22, 0.22],
+                bbox=[0.0, 0.0, 1.0, 0.95],
+            )
+            table.auto_set_font_size(False)
+            table.set_fontsize(7)
+            for cell in table.get_celld().values():
+                cell.set_edgecolor("#DDDDDD")
+                cell.set_linewidth(0.4)
+                cell.set_facecolor((1, 1, 1, 0.86))
         caption = (
             "Figure 1. Cumulative percentage of ICA components with equivalent-dipole "
-            "residual variance <= x, per ICA method. Lower curves climbing faster on "
-            "the left indicate more near-dipolar (cortically plausible) sources. "
+            "residual variance <= x, per ICA method. Panel A shows the true "
+            "cumulative curves; curves are not jittered or offset, and exact "
+            "duplicate curves are merged into a combined label. Panel B magnifies "
+            "the same 1-15% residual-variance region as percentage-point "
+            "differences from the subject-level AMICA-Python reference, so "
+            "small separations remain visible when the raw cumulative curves "
+            "overlap. AMICA-Python backend curves are represented as one "
+            "AMICA-Python backend curve in Panel A; in Panel B they define "
+            "the zero reference line rather than being re-plotted as a "
+            "difference curve. The 5%/10% cutoff table gives the canonical near-dipolar "
+            "summary values. Lower curves climbing faster on "
+            "the left indicate more near-dipolar, cortically plausible sources. "
             "Vertical dashed lines mark 5% and 10% residual variance, the cutoffs "
             "used by Delorme 2012 and Frank 2022 respectively.\n\n"
-            f"Methods plotted: {sorted(plotted_methods)}. "
+            f"Methods plotted: {[_display_method_name(m) for m in plotted_methods]}. "
             f"Subjects: {sorted(comp_df['subject'].unique().tolist())}. "
             "Hardware varies by method; see Table 2 / fig05."
         )
@@ -413,14 +690,22 @@ def plot_cumulative_dipolarity(
                 f" Methods without dipole residual variance were not plotted: {missing_methods}."
             )
     else:
+        fig, ax = plt.subplots(figsize=(7.2, 4.4))
         stem = "fig01_iclabel_proxy_cumulative"
         thresholds = np.linspace(0.0, 1.0, 101)
-        for method, mdf in comp_df.groupby("method"):
+        for i, method in enumerate(method_order):
+            mdf = comp_df[comp_df["method"] == method]
             probs = mdf["iclabel_brain"].dropna().to_numpy()
             if probs.size == 0:
                 continue
             pct = np.array([100.0 * (probs >= t).mean() for t in thresholds])
-            ax.plot(thresholds, pct, label=method, color=_color_for(method), lw=2.0)
+            ax.plot(
+                thresholds,
+                pct,
+                label=_display_method_name(method),
+                color=_color_for(method),
+                **_method_line_style(method, i),
+            )
         ax.set_xlabel("ICLabel brain probability threshold")
         ax.set_ylabel("Percent of components labelled brain (proxy)")
         ax.set_ylim(0, 100)
@@ -442,7 +727,11 @@ def plot_cumulative_dipolarity(
     if not ax.has_data():
         plt.close(fig)
         return None, "no per-component data available for figure 1"
-    ax.legend(frameon=False, loc="lower right")
+    if have_dipole:
+        fig.subplots_adjust(left=0.08, right=0.98, top=0.84, bottom=0.13)
+    else:
+        ax.legend(frameon=False, loc="center left", bbox_to_anchor=(1.03, 0.72))
+        fig.subplots_adjust(left=0.09, right=0.66, top=0.84, bottom=0.14)
     _apply_run_mode_banner(fig, bench_df)
     paths = _save(fig, out_dir, stem)
     plt.close(fig)
@@ -470,9 +759,14 @@ def _regression_with_inset(ax, x, y, *, x_label, y_label, panel_letter):
     xx = np.linspace(x[mask].min(), x[mask].max(), 50)
     ax.plot(xx, slope * xx + intercept, ls="--", color="black", lw=0.8)
     ax.text(
-        0.05, 0.95,
+        0.97, 0.95,
         f"R² = {r ** 2:.3f}\np = {p:.3g}\nn = {mask.sum()}",
-        transform=ax.transAxes, va="top", fontsize=8, family="monospace",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=8,
+        family="monospace",
+        bbox=dict(facecolor="white", edgecolor="none", alpha=0.82, pad=1.4),
     )
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
@@ -495,15 +789,22 @@ def plot_quality_summary(
     proxy and panel B/D explain that the cutoff sweep is unavailable.
     """
     set_paper_style()
-    summary = _method_summary(bench_df)
+    figure2_bench_df = bench_df.copy()
+    figure2_comp_df = comp_df.copy()
+    if "method" in figure2_bench_df.columns:
+        figure2_bench_df["method"] = figure2_bench_df["method"].map(_figure2_algorithm_name)
+    if "method" in figure2_comp_df.columns:
+        figure2_comp_df["method"] = figure2_comp_df["method"].map(_figure2_algorithm_name)
+
+    summary = _algorithm_summary_for_quality(bench_df)
     required = {"method", "mir_kbits_s", "remnant_pmi_percent", "fit_runtime_s"}
     if summary.empty or not required.issubset(summary.columns):
         return None, "no methods with both MIR/PMI and near-dipolar data"
 
     methods = summary["method"].tolist()
-    have_complete_dipoles = _dipoles_complete_for_methods(comp_df, methods)
+    have_complete_dipoles = _dipoles_complete_for_methods(figure2_comp_df, methods)
     if have_complete_dipoles:
-        quality = _dipole_share_by_method(comp_df, methods, 5.0).rename("quality_y")
+        quality = _dipole_share_by_method(figure2_comp_df, methods, 5.0).rename("quality_y")
         y_label = "Near-dipolar components (% w/ r.v. <= 5)"
         proxy_label = ""
     else:
@@ -518,6 +819,7 @@ def plot_quality_summary(
         .join(quality, how="inner")
         .dropna(subset=["mir_kbits_s", "remnant_pmi_percent", "quality_y"])
         .reset_index()
+        .rename(columns={"index": "method"})
     )
     if plot_df.empty:
         return None, "no methods with both MIR/PMI and near-dipolar data"
@@ -548,12 +850,12 @@ def plot_quality_summary(
     if have_complete_dipoles:
         _plot_cutoff_r2_panel(
             axes[1],
-            comp_df,
+            figure2_comp_df,
             plot_df,
             "mir_kbits_s",
             panel_letter="B",
             metric_label="MIR",
-            bench_df=bench_df,
+            bench_df=figure2_bench_df,
         )
     else:
         axes[1].set_title("B. MIR R^2 across cutoffs", loc="left", fontweight="bold")
@@ -591,12 +893,12 @@ def plot_quality_summary(
     if have_complete_dipoles:
         _plot_cutoff_r2_panel(
             axes[3],
-            comp_df,
+            figure2_comp_df,
             plot_df,
             "remnant_pmi_percent",
             panel_letter="D",
             metric_label="PMI",
-            bench_df=bench_df,
+            bench_df=figure2_bench_df,
         )
     else:
         axes[3].set_title("D. PMI R^2 across cutoffs", loc="left", fontweight="bold")
@@ -621,14 +923,18 @@ def plot_quality_summary(
     plt.close(fig)
     caption = (
         "Figure 2. Frank 2022 style decomposition-quality summary.\n"
-        "Panels A and C: each point is the across-subject method centroid "
-        "(one dot per ICA method) for the same input dataset; A plots mean "
+        "Panels A and C: each point is the across-subject algorithm centroid "
+        "(one dot per ICA algorithm; AMICA JAX-GPU and NumPy-CPU are collapsed "
+        "as backend-parity runs) for the same input dataset; A plots mean "
         "MIR (kbits/sec) vs near-dipolar component share, C plots remnant "
         "pairwise mutual information vs near-dipolar share. Panels B and D: "
-        "R^2 of the corresponding metric (MIR for B, remnant PMI for D) vs "
-        "near-dipolar share, regressed on per-(subject, method) points "
-        "(n ~= n_subjects * n_methods) at each residual-variance cutoff, "
-        "so the cutoff sweep is statistically stable even with few methods.\n"
+        "R^2 of the corresponding metric (MIR for B, remnant PMI for D; "
+        "left y-axis) and regression significance (-log10(p); right y-axis) "
+        "vs near-dipolar share, regressed on per-(subject, algorithm) points "
+        "(n ~= n_subjects * n_algorithms) at each residual-variance cutoff. "
+        "The low R^2 values at the canonical 5% and 10% cutoffs indicate "
+        "that dipolarity and MIR/PMI are only weakly coupled in this "
+        "single-dataset benchmark configuration.\n"
     )
     if not have_complete_dipoles:
         caption += (
@@ -680,52 +986,142 @@ def plot_mir_comparison(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Pat
     csv_path = out_dir / "fig04_mir_table.csv"
     md_path = out_dir / "fig04_mir_table.md"
     table.to_csv(csv_path, index=False)
-    md_path.write_text(table.to_markdown(index=False, floatfmt=".4g"), encoding="utf-8")
+    md_path.write_text(_markdown_table(table, floatfmt=".4g"), encoding="utf-8")
 
-    best_idx = table["mir_kbits_s"].idxmax() if table["mir_kbits_s"].notna().any() else None
+    plot_df = table.dropna(subset=["mir_kbits_s"]).copy()
     diff_paths = None
-    if best_idx is not None:
-        best_mir = table.loc[best_idx, "mir_kbits_s"]
-        best_label = str(table.loc[best_idx, "display_label"])
-        # Frank 2022 fig 4 convention: positive = "AMICA advantage". The best
-        # method's bar sits at 0; every other method's bar gives the deficit
-        # (best - this) so larger bars = bigger AMICA advantage.
-        plot_df = table.dropna(subset=["mir_kbits_s"]).copy()
-        plot_df["amica_advantage_kbits_s"] = best_mir - plot_df["mir_kbits_s"]
-        x = np.arange(len(plot_df))
-        fig, ax = plt.subplots(figsize=(8.0, 4.2))
-        colors = [_color_for(m) for m in plot_df["method"]]
-        bars = ax.bar(x, plot_df["amica_advantage_kbits_s"], color=colors, width=0.72)
-        ax2 = ax.twinx()
-        ax2.plot(x, plot_df["mir_kbits_s"], "o-", color="#222", lw=1.2, ms=4)
-        ax2.set_ylabel("Mean MIR (kbits/sec)")
-        ax.axhline(0, color="black", lw=0.8)
-        ax.set_ylabel(f"Best-method MIR advantage vs each method (kbits/sec)\n(best = {best_label})")
-        ax.set_xticks(x)
-        ax.set_xticklabels(plot_df["display_label"], rotation=25, ha="right")
-        ax.set_title("Figure 4. MIR comparison (Frank 2022 style)", loc="left", fontweight="bold")
-        for bar, diff in zip(bars, plot_df["amica_advantage_kbits_s"]):
-            if np.isfinite(diff) and diff > 0.05:
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    diff,
-                    f"+{diff:.2f}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=7,
+    if not plot_df.empty:
+        n = plot_df["n_subjects"].astype(float) if "n_subjects" in plot_df.columns else np.nan
+        sd = plot_df["mir_kbits_s_std"].astype(float) if "mir_kbits_s_std" in plot_df.columns else np.nan
+        plot_df["mir_ci_half"] = np.where(
+            np.isfinite(sd) & np.isfinite(n) & (n > 1),
+            1.96 * sd / np.sqrt(n),
+            0.0,
+        )
+
+        fig, axes = plt.subplots(
+            1,
+            2,
+            figsize=(9.2, 4.8),
+            gridspec_kw={"width_ratios": [1.05, 1.25], "wspace": 0.34},
+        )
+
+        y = np.arange(len(plot_df))
+        for yi, (_, row) in zip(y, plot_df.iterrows()):
+            axes[0].errorbar(
+                row["mir_kbits_s"],
+                yi,
+                xerr=row["mir_ci_half"],
+                fmt="o",
+                ms=5,
+                capsize=2,
+                elinewidth=0.9,
+                color=_color_for(row["method"]),
+                markeredgecolor="black",
+                markeredgewidth=0.45,
+            )
+        axes[0].set_yticks(y)
+        axes[0].set_yticklabels(plot_df["display_label"])
+        axes[0].invert_yaxis()
+        axes[0].set_xlabel("MIR (kbits/sec)")
+        axes[0].set_title("A. Mean MIR by method", loc="left", fontweight="bold")
+        axes[0].grid(axis="x", color="#DDDDDD", lw=0.5)
+
+        paired_rows = []
+        mir_df = bench_df.dropna(subset=["mir_kbits_s"]).copy()
+        amica_df = mir_df[mir_df["method"].map(_is_amica_method)]
+        if not amica_df.empty and "subject" in mir_df.columns:
+            ref_by_subject = amica_df.groupby("subject")["mir_kbits_s"].mean().rename("amica")
+            comparator_order = [
+                method
+                for method in plot_df["method"].tolist()
+                if not _is_amica_method(method)
+            ]
+            for method in comparator_order:
+                comp = (
+                    mir_df.loc[mir_df["method"] == method]
+                    .groupby("subject")["mir_kbits_s"]
+                    .mean()
+                    .rename("comparator")
                 )
-        fig.tight_layout()
-        _apply_run_mode_banner(fig, bench_df)
+                paired = ref_by_subject.to_frame().join(comp, how="inner").dropna()
+                if len(paired) < 2:
+                    continue
+                diff = (paired["amica"] - paired["comparator"]).to_numpy(dtype=float)
+                mean = float(np.mean(diff))
+                sd_diff = float(np.std(diff, ddof=1))
+                ci_half = 1.96 * sd_diff / np.sqrt(len(diff)) if sd_diff > 0 else 0.0
+                paired_rows.append(
+                    {
+                        "method": method,
+                        "label": _display_method_name(method),
+                        "diff": diff,
+                        "mean": mean,
+                        "ci_half": ci_half,
+                        "n": int(len(diff)),
+                    }
+                )
+        paired_rows = sorted(paired_rows, key=lambda row: row["mean"], reverse=True)
+        if paired_rows:
+            rng = np.random.default_rng(0)
+            y2 = np.arange(len(paired_rows))
+            for yi, row in zip(y2, paired_rows):
+                jitter = rng.normal(0.0, 0.045, size=len(row["diff"]))
+                axes[1].scatter(
+                    row["diff"],
+                    np.full(len(row["diff"]), yi) + jitter,
+                    s=18,
+                    color=_color_for(row["method"]),
+                    alpha=0.48,
+                    edgecolor="black",
+                    linewidth=0.25,
+                    zorder=2,
+                )
+                axes[1].errorbar(
+                    row["mean"],
+                    yi,
+                    xerr=row["ci_half"],
+                    fmt="s",
+                    ms=5,
+                    capsize=3,
+                    color="#222222",
+                    ecolor="#222222",
+                    elinewidth=1.2,
+                    zorder=4,
+                )
+            axes[1].set_yticks(y2)
+            axes[1].set_yticklabels([row["label"] for row in paired_rows])
+            axes[1].invert_yaxis()
+            axes[1].axvline(0, color="#777777", lw=0.8, ls="--")
+            axes[1].set_xlabel("Delta MIR vs AMICA-Python (kbits/sec)")
+            axes[1].set_title("B. Paired AMICA-Python advantage", loc="left", fontweight="bold")
+            axes[1].grid(axis="x", color="#DDDDDD", lw=0.5)
+        else:
+            axes[1].axis("off")
+            axes[1].text(
+                0.5,
+                0.5,
+                "No paired AMICA/comparator\nMIR cells available",
+                transform=axes[1].transAxes,
+                ha="center",
+                va="center",
+                fontsize=8,
+            )
+
+        fig.suptitle("Figure 4. MIR comparison", x=0.01, y=1.02, ha="left", fontweight="bold")
+        _apply_run_mode_banner(fig, bench_df, y=1.035)
         diff_paths = _save(fig, out_dir, "fig04_mir_difference")
         plt.close(fig)
 
     caption = (
-        "Figure 4. MIR comparison (Frank 2022 fig 4 style).\n"
-        f"Bars: across-subject mean MIR advantage of the best method ({best_label if best_idx is not None else 'AMICA'}) over each other method, "
-        "in kbits/sec. The best method's own bar sits at 0 by construction; "
-        "larger bars indicate bigger MIR gap. Line: across-subject mean MIR "
-        "(right axis). Methods are sorted from highest to lowest mean MIR. "
-        "Hardware/backend differ across methods; see the runtime summary."
+        "Figure 4. MIR comparison. Panel A shows across-subject mean MIR by "
+        "method with 95% confidence intervals of the mean, sorted from highest "
+        "to lowest mean MIR. Panel B shows paired per-subject Delta MIR versus "
+        "AMICA-Python, computed as the subject-level mean across available "
+        "AMICA-Python backends minus the comparator MIR. Dots are subjects; "
+        "black squares and whiskers are the paired mean and 95% confidence "
+        "interval. AMICA backend rows are retained in Panel A and collapsed "
+        "only for the AMICA-Python reference in Panel B."
     )
     _write_caption(captions_dir, "fig04_mir_difference", caption, bench_df=bench_df)
     return {
@@ -797,38 +1193,108 @@ def plot_runtime_summary(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Pa
 
 def plot_amica_convergence(iter_df: pd.DataFrame, out_dir: Path, captions_dir: Path,
                             bench_df: pd.DataFrame | None = None) -> tuple[Path | None, str]:
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+
     set_paper_style()
+    needed = {"method", "subject", "iteration", "log_likelihood"}
+    if not needed.issubset(iter_df.columns):
+        return None, "missing columns for AMICA iteration trace"
     df = iter_df[iter_df["method"].astype(str).str.contains("AMICA", case=False, na=False)].copy()
+    df = df.dropna(subset=["subject", "iteration", "log_likelihood"])
     if df.empty:
         return None, "no AMICA iteration trace"
+    trace_df = (
+        df.groupby(["subject", "iteration"], sort=True, as_index=False)["log_likelihood"]
+        .mean()
+        .sort_values(["subject", "iteration"])
+    )
+    pivot = trace_df.pivot_table(
+        index="iteration",
+        columns="subject",
+        values="log_likelihood",
+        aggfunc="mean",
+    ).sort_index()
+    if pivot.empty:
+        return None, "no AMICA iteration trace"
+
     fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.2))
-    n_subjects = df["subject"].nunique()
-    for sub, sdf in df.groupby("subject"):
-        sdf = sdf.sort_values("iteration")
-        axes[0].plot(sdf["iteration"], sdf["log_likelihood"], lw=0.8, color="#A33", alpha=0.6, label=str(sub) if n_subjects == 1 else None)
-    # Median LL across subjects (when >1)
-    if n_subjects > 1:
-        med = df.groupby("iteration")["log_likelihood"].median()
-        axes[0].plot(med.index, med.values, lw=2.0, color="#D7263D", label="median")
-    for axv in (50, 250, 1000, 2000, 5000):
-        if df["iteration"].max() >= axv:
-            axes[0].axvline(axv, ls="--", color="#888", lw=0.6)
-            axes[0].text(axv, axes[0].get_ylim()[1], f" {axv}", color="#888", fontsize=7, va="top")
+    n_subjects = int(pivot.shape[1])
+    iteration = pivot.index.to_numpy(dtype=float)
+    subject_color = "#B06A6A"
+    for subject in pivot.columns:
+        axes[0].plot(
+            iteration,
+            pivot[subject].to_numpy(dtype=float),
+            lw=0.55,
+            color=subject_color,
+            alpha=0.22,
+        )
+    median_ll = pivot.median(axis=1)
+    q25_ll = pivot.quantile(0.25, axis=1)
+    q75_ll = pivot.quantile(0.75, axis=1)
+    axes[0].fill_between(
+        iteration,
+        q25_ll.to_numpy(dtype=float),
+        q75_ll.to_numpy(dtype=float),
+        color="#D7263D",
+        alpha=0.16,
+        linewidth=0,
+    )
+    axes[0].plot(iteration, median_ll.to_numpy(dtype=float), lw=2.2, color="#D7263D")
+    frank_milestones = (50, 250, 1000, 2000, 5000)
+    max_iteration = int(np.nanmax(iteration))
+    displayed_milestones = [axv for axv in frank_milestones if max_iteration >= axv]
+    for axv in displayed_milestones:
+        axes[0].axvline(axv, ls="--", color="#888", lw=0.6)
+        axes[0].text(axv, axes[0].get_ylim()[1], f" {axv}", color="#888", fontsize=7, va="top")
     axes[0].set_xlabel("AMICA iteration")
     axes[0].set_ylabel("Log-likelihood")
     axes[0].set_title("A. AMICA convergence trace", loc="left", fontweight="bold")
-    axes[0].legend(loc="lower right", frameon=False, fontsize=8)
-    # Panel B: Δ log-likelihood per iter. Frank 2023 plots MIR/PMI per iter
-    # using saved checkpoints; we don't yet hook the AMICA fit loop, so we
-    # show LL improvement -- a related but DIFFERENT optimisation diagnostic.
-    for sub, sdf in df.groupby("subject"):
-        sdf = sdf.sort_values("iteration")
-        dll = np.diff(sdf["log_likelihood"].to_numpy())
-        axes[1].plot(sdf["iteration"].to_numpy()[1:], dll, lw=0.8, color="#A33", alpha=0.6)
-    axes[1].axhline(0, color="black", lw=0.6)
+    axes[0].legend(
+        handles=[
+            Line2D([0], [0], color=subject_color, lw=0.8, alpha=0.35, label=f"subjects (n={n_subjects})"),
+            Line2D([0], [0], color="#D7263D", lw=2.2, label="median"),
+            Patch(facecolor="#D7263D", alpha=0.16, edgecolor="none", label="IQR"),
+        ],
+        loc="lower right",
+        frameon=False,
+        fontsize=8,
+    )
+
+    delta = pivot.diff().iloc[1:]
+    positive = delta.to_numpy(dtype=float)
+    positive = positive[np.isfinite(positive) & (positive > 0)]
+    floor = float(max(np.nanpercentile(positive, 1) * 0.1, 1e-12)) if positive.size else 1e-12
+    delta_for_plot = delta.where(delta > 0, floor)
+    rolling = delta_for_plot.rolling(window=25, min_periods=1, center=True).median()
+    delta_iter = rolling.index.to_numpy(dtype=float)
+    median_delta = rolling.median(axis=1)
+    q25_delta = rolling.quantile(0.25, axis=1)
+    q75_delta = rolling.quantile(0.75, axis=1)
+    axes[1].fill_between(
+        delta_iter,
+        q25_delta.to_numpy(dtype=float),
+        q75_delta.to_numpy(dtype=float),
+        color="#D7263D",
+        alpha=0.18,
+        linewidth=0,
+        label="IQR",
+    )
+    axes[1].plot(
+        delta_iter,
+        median_delta.to_numpy(dtype=float),
+        lw=2.1,
+        color="#D7263D",
+        label="rolling median",
+    )
+    axes[1].set_yscale("log")
     axes[1].set_xlabel("AMICA iteration")
-    axes[1].set_ylabel("Δ log-likelihood")
-    axes[1].set_title("B. Δ log-likelihood per iteration", loc="left", fontweight="bold")
+    axes[1].set_ylabel("Positive Δ log-likelihood per iteration (log)")
+    axes[1].set_title("B. Rolling Δ log-likelihood diagnostic", loc="left", fontweight="bold")
+    for axv in displayed_milestones:
+        axes[1].axvline(axv, ls="--", color="#888", lw=0.6)
+    axes[1].legend(frameon=False, loc="upper right", fontsize=8)
     if n_subjects == 1:
         fig.suptitle("Figure 7. AMICA convergence (single-subject pilot)", fontweight="bold")
     else:
@@ -837,15 +1303,27 @@ def plot_amica_convergence(iter_df: pd.DataFrame, out_dir: Path, captions_dir: P
     _apply_run_mode_banner(fig, bench_df, y=1.04)
     paths = _save(fig, out_dir, "fig07_amica_iterations")
     plt.close(fig)
+    displayed_text = ", ".join(str(axv) for axv in displayed_milestones)
+    cap_note = ""
+    if 5000 not in displayed_milestones:
+        cap_note = (
+            f" The Frank 2023/2025 5000-iteration cap is not displayed "
+            f"because these benchmark traces end at {max_iteration} iterations."
+        )
     caption = (
-        "Figure 7. AMICA log-likelihood convergence trace. Panel A: LL vs "
-        "iteration, one line per subject; thick line is the across-subject "
-        "median when n_subjects > 1. Vertical dashed lines at 50, 250, 1000, "
-        "2000, 5000 mark the iteration milestones used in Frank 2023 "
+        "Figure 7. AMICA log-likelihood convergence trace. Panel A: LL versus "
+        "iteration. Thin faint lines are subject traces, the thick red line is "
+        f"the across-subject median, and the shaded band is the IQR (n={n_subjects} "
+        f"subjects). Vertical dashed lines at {displayed_text} "
+        "mark the displayed iteration milestones used in Frank 2023 "
         "(50 = default Newton start; 250 = large-ΔMIR cliff; 1000 = PMI "
         "plateau begins; 2000 = EEGLAB default max_iter; 5000 = Frank 2023 "
-        "study cap, also used in Frank 2025). Panel "
-        "B: per-iteration LL improvement (Δ LL) -- an optimisation-progress "
+        "study cap, also used in Frank 2025)."
+        f"{cap_note} Panel "
+        "B: 25-iteration rolling median positive Δ log-likelihood with IQR "
+        "on a log scale. Non-positive increments are clipped to a small floor "
+        f"({floor:.2g}) only so the convergence tail can be shown on a log axis. "
+        "This is an optimisation-progress "
         "diagnostic, NOT a direct measurement of MIR or PMI gain (Frank 2023 "
         "plots MIR/PMI per iteration via fit-loop checkpoints which we do not "
         "hook yet)."
@@ -908,66 +1386,79 @@ def plot_tolerance_sweep(sweep_df: pd.DataFrame, out_dir: Path, captions_dir: Pa
 def plot_data_sufficiency(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Path) -> tuple[Path | None, str]:
     """Figure 8 (Frank 2025 style): κ_channels + κ_effective per subject + reference lines.
 
-    Uses :func:`amica_python.benchmark.schema.kappa_table` to fetch verdicts;
-    reference lines at the canonical κ=20 / 30 (Delorme 2012) / 50 (Frank 2025).
+    Horizontal dumbbell plot with shaded regimes at κ < 30, 30 <= κ < 50,
+    and κ >= 50, plus the canonical κ=20 / 30 / 50 reference lines.
     """
     from matplotlib.patches import Patch
-    from ..schema import kappa_table, KAPPA_TARGET_MINIMUM, KAPPA_TARGET_PAPER
+    from ..schema import KAPPA_TARGET_MINIMUM, KAPPA_TARGET_PAPER
+
     set_paper_style()
     df = bench_df.dropna(subset=["kappa_channels", "kappa_effective"]).copy()
     if df.empty:
         return None, "no kappa data"
-    df = df.drop_duplicates(subset=["subject"]).sort_values("subject")
-    kt = kappa_table(df).set_index("subject")
-    fig, ax = plt.subplots(figsize=(11.0, 4.8))
-    x = np.arange(len(df))
-    width = 0.35
-    verdict_colors = {
-        "below_delorme_min": "#C44",
-        "meets_delorme_min": "#D88",
-        "paper_grade": "#2A9D8F",
-    }
-    edge_colors = [verdict_colors.get(kt.loc[s, "verdict"], "#888") if s in kt.index else "#888"
-                   for s in df["subject"]]
-    ax.bar(x - width / 2, df["kappa_channels"], width,
-           color="#4477AA", edgecolor=edge_colors, linewidth=1.5, label="κ_channels")
-    ax.bar(x + width / 2, df["kappa_effective"], width,
-           color="#EE6677", edgecolor=edge_colors, linewidth=1.5, label="κ_effective")
-    # Reference lines + labels anchored to LEFT inside the plot area (no collision with bars).
-    for thr, name in [
-        (20, "κ=20"),
-        (KAPPA_TARGET_MINIMUM, f"κ={KAPPA_TARGET_MINIMUM} (Delorme 2012 min)"),
-        (KAPPA_TARGET_PAPER,   f"κ={KAPPA_TARGET_PAPER} (Frank 2025 paper-grade)"),
-    ]:
-        ax.axhline(thr, ls="--", color="#888", lw=0.7)
-        ax.text(-0.5, thr, f" {name}", color="#888", fontsize=7, va="bottom", ha="left")
-    ax.set_xticks(x)
-    ax.set_xticklabels(df["subject"].astype(str), rotation=45, ha="right", fontsize=8)
-    ax.set_xlim(-1.0, len(df) - 0.5)
-    ax.set_ylabel("κ = n_samples / n²")
-    ax.set_xlabel("Subject")
-    ax.set_title("Figure 8. Data-sufficiency κ diagnostic (Frank 2025)", loc="left", fontweight="bold")
-    # Two-block legend: kappa bars + verdict swatches (bar edge color).
+    df = df.drop_duplicates(subset=["subject"]).sort_values(["kappa_channels", "subject"])
+
+    y = np.arange(len(df))
+    fig_height = max(5.0, 0.24 * len(df) + 1.6)
+    fig, ax = plt.subplots(figsize=(7.8, fig_height))
+    k_channels = df["kappa_channels"].to_numpy(dtype=float)
+    k_effective = df["kappa_effective"].to_numpy(dtype=float)
+    finite_k = np.concatenate([k_channels[np.isfinite(k_channels)], k_effective[np.isfinite(k_effective)]])
+    x_min = max(1.0, min(20.0, float(np.nanmin(finite_k)) * 0.8))
+    x_max = max(60.0, float(np.nanmax(finite_k)) * 1.15)
+
+    ax.set_xscale("log")
+    ax.set_xlim(x_min, x_max)
+    ax.axvspan(x_min, KAPPA_TARGET_MINIMUM, color="#C44", alpha=0.055, lw=0)
+    ax.axvspan(KAPPA_TARGET_MINIMUM, KAPPA_TARGET_PAPER, color="#D99A2B", alpha=0.07, lw=0)
+    ax.axvspan(KAPPA_TARGET_PAPER, x_max, color="#2A9D8F", alpha=0.06, lw=0)
+    for thr in (20, KAPPA_TARGET_MINIMUM, KAPPA_TARGET_PAPER):
+        ax.axvline(thr, ls="--", color="#777777", lw=0.7)
+        ax.text(
+            thr,
+            -1.05,
+            f"κ={thr}",
+            ha="center",
+            va="center",
+            fontsize=7,
+            color="#555555",
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.82, pad=0.8),
+        )
+
+    for yi, k_ch, k_eff in zip(y, k_channels, k_effective):
+        ax.hlines(yi, min(k_ch, k_eff), max(k_ch, k_eff), color="#777777", lw=0.75, alpha=0.55, zorder=1)
+    ax.scatter(k_channels, y, s=28, color="#4477AA", edgecolor="black", linewidth=0.35, zorder=3, label="κ_channels")
+    ax.scatter(k_effective, y, s=28, color="#EE6677", edgecolor="black", linewidth=0.35, zorder=3, label="κ_effective")
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(df["subject"].astype(str), fontsize=7)
+    ax.set_ylim(len(df) - 0.5, -1.45)
+    ax.set_xlabel("κ = n_samples / n² (log scale)")
+    ax.set_ylabel("Subject (sorted by κ_channels)")
+    ax.set_title("Figure 8. Data-sufficiency κ diagnostic (Frank 2025)", loc="left", fontweight="bold", pad=14)
+    ax.grid(axis="x", color="#DDDDDD", lw=0.5)
     handles = [
-        Patch(facecolor="#4477AA", label="κ_channels"),
-        Patch(facecolor="#EE6677", label="κ_effective"),
-        Patch(facecolor="white", edgecolor=verdict_colors["below_delorme_min"], linewidth=1.5, label="κ < 30 (limited)"),
-        Patch(facecolor="white", edgecolor=verdict_colors["meets_delorme_min"], linewidth=1.5, label="30 ≤ κ < 50 (Delorme min met)"),
-        Patch(facecolor="white", edgecolor=verdict_colors["paper_grade"],       linewidth=1.5, label="κ ≥ 50 (high-data regime)"),
+        plt.Line2D([0], [0], marker="o", color="none", markerfacecolor="#4477AA", markeredgecolor="black", markersize=5, label="κ_channels"),
+        plt.Line2D([0], [0], marker="o", color="none", markerfacecolor="#EE6677", markeredgecolor="black", markersize=5, label="κ_effective"),
+        Patch(facecolor="#C44", alpha=0.10, edgecolor="none", label="κ < 30"),
+        Patch(facecolor="#D99A2B", alpha=0.13, edgecolor="none", label="30 ≤ κ < 50"),
+        Patch(facecolor="#2A9D8F", alpha=0.12, edgecolor="none", label="κ ≥ 50"),
     ]
-    ax.legend(handles=handles, frameon=False, loc="upper right", ncol=1, fontsize=8)
-    fig.tight_layout()
+    ax.legend(handles=handles, frameon=False, loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8)
+    fig.tight_layout(rect=[0, 0, 0.82, 0.97])
     _apply_run_mode_banner(fig, bench_df)
     paths = _save(fig, out_dir, "fig08_kappa_sufficiency")
     plt.close(fig)
     caption = (
-        "Figure 8. Data-sufficiency κ. κ_channels = n_samples / n_channels² "
-        "(blue); κ_effective = n_samples / n_components² (red). Reference "
-        "lines at κ=20, κ=30 (Delorme 2012 minimum) and κ=50 (Frank 2025 "
-        "high-data regime). Frank 2025 finds ICA quality continues improving "
-        "past κ=50 with no clear plateau, so κ ≥ 50 is a strong-data regime, "
-        "not a proof of optimal decomposition. Bar edge colour encodes the "
-        "per-subject regime (red < 30, amber 30-50, teal ≥ 50)."
+        "Figure 8. Data-sufficiency κ. Subjects are sorted by κ_channels. "
+        "Each dumbbell connects κ_channels = n_samples / n_channels² (blue) "
+        "and κ_effective = n_samples / n_components² (red) for the same "
+        "subject. The x-axis is log-scaled so both κ definitions remain "
+        "readable. Shaded regimes mark κ < 30, 30 ≤ κ < 50, and κ ≥ 50, "
+        "with reference verticals at κ=20, κ=30 (Delorme 2012 minimum), and "
+        "κ=50 (Frank 2025 high-data regime). Frank 2025 finds ICA quality "
+        "continues improving past κ=50 with no clear plateau, so κ ≥ 50 is "
+        "a strong-data regime, not a proof of optimal decomposition."
     )
     _write_caption(captions_dir, "fig08_kappa_sufficiency", caption, bench_df=bench_df)
     return Path(paths[0]), caption
@@ -987,11 +1478,11 @@ def plot_paired_mir_difference(
     """Figure 9: per-subject paired Δ MIR (reference − comparator) with t-test.
 
     For each comparator method, compute the per-subject difference
-    ``mir_kbits_s[reference, sub] − mir_kbits_s[comparator, sub]`` and display
-    as a strip+box plot with the paired t-test p-value and Cohen's d_z.
-    The reference method is the highest-MIR method whose ``backend`` contains
-    ``reference_method_token`` (default 'amica') so this generalises to either
-    JAX-GPU or NumPy-CPU as the AMICA representative.
+    ``mir_kbits_s[AMICA-Python, sub] − mir_kbits_s[comparator, sub]`` and
+    display as a strip+box plot with the paired t-test p-value and Cohen's d_z.
+    AMICA-Python is the subject-level mean across available AMICA backends,
+    which collapses backend-parity runs without treating them as independent
+    algorithms.
     """
     from scipy import stats as _scistats
     set_paper_style()
@@ -1001,29 +1492,32 @@ def plot_paired_mir_difference(
     df = bench_df.dropna(subset=["mir_kbits_s"]).copy()
     if df.empty:
         return None, "no MIR data"
-    # Resolve display labels so the figure shows e.g. "AMICA-Python (JAX-GPU)"
-    if "display_label" not in df.columns:
-        df["display_label"] = df["method"]
-    # Pick the AMICA-family method with highest grand mean MIR as reference.
-    mean_by_method = df.groupby("method")["mir_kbits_s"].mean()
-    amica_methods = [m for m in mean_by_method.index if reference_method_token.lower() in str(m).lower()
-                     or reference_method_token.lower() in str(df.loc[df["method"] == m, "backend"].iloc[0]).lower()]
-    if not amica_methods:
+    df["display_label"] = df["method"].map(_display_method_name)
+    amica_mask = df["method"].map(_is_amica_method)
+    if "backend" in df.columns:
+        amica_mask = amica_mask | df["backend"].astype(str).str.contains(reference_method_token, case=False, na=False)
+    amica_df = df[amica_mask].copy()
+    if amica_df.empty:
         return None, f"no method containing token '{reference_method_token}' to anchor Δ MIR"
-    ref_method = mean_by_method.loc[amica_methods].idxmax()
-    ref_label = str(df.loc[df["method"] == ref_method, "display_label"].iloc[0])
-    others = [m for m in mean_by_method.index if m != ref_method
-              and reference_method_token.lower() not in str(m).lower()]
+    ref_label = "AMICA-Python"
+    ref_by_subject = amica_df.groupby("subject")["mir_kbits_s"].mean().rename("reference")
+    mean_by_method = df.groupby("method")["mir_kbits_s"].mean().sort_values(ascending=False)
+    amica_methods = set(amica_df["method"].dropna().unique())
+    others = [m for m in mean_by_method.index if m not in amica_methods]
     if not others:
         return None, "no comparator methods to test against"
-    # Build paired matrix (subjects x methods).
-    pivot = df.pivot_table(index="subject", columns="method", values="mir_kbits_s", aggfunc="mean")
     rows = []
     for comp in others:
-        common = pivot[[ref_method, comp]].dropna()
+        comp_by_subject = (
+            df.loc[df["method"] == comp]
+            .groupby("subject")["mir_kbits_s"]
+            .mean()
+            .rename("comparator")
+        )
+        common = ref_by_subject.to_frame().join(comp_by_subject, how="inner").dropna()
         if len(common) < 2:
             continue
-        diff = (common[ref_method] - common[comp]).to_numpy()
+        diff = (common["reference"] - common["comparator"]).to_numpy()
         n = int(len(diff))
         mean = float(np.mean(diff))
         sd = float(np.std(diff, ddof=1)) if n > 1 else float("nan")
@@ -1031,13 +1525,13 @@ def plot_paired_mir_difference(
         ci_half = 1.96 * se if n > 1 else float("nan")
         cohen_dz = mean / sd if (sd and np.isfinite(sd) and sd > 0) else float("nan")
         try:
-            t_stat, p_two = _scistats.ttest_rel(common[ref_method], common[comp])
+            t_stat, p_two = _scistats.ttest_rel(common["reference"], common["comparator"])
             t_stat = float(t_stat); p_two = float(p_two)
         except Exception:
             t_stat, p_two = float("nan"), float("nan")
         rows.append({
             "comparator": comp,
-            "comparator_label": str(df.loc[df["method"] == comp, "display_label"].iloc[0]),
+            "comparator_label": _display_method_name(comp),
             "n": n, "diff": diff,
             "mean": mean, "sd": sd, "ci_half": ci_half,
             "cohen_dz": cohen_dz, "t_stat": t_stat, "p_two_sided": p_two,
@@ -1098,7 +1592,9 @@ def plot_paired_mir_difference(
         "95% confidence interval of the mean (mean ± 1.96·SE). Significance "
         "stars from a paired t-test on the same n subjects: * p<0.05, ** p<0.01, "
         "*** p<0.001, ns = not significant. d_z is Cohen's standardized effect "
-        "size for paired differences.",
+        "size for paired differences. The AMICA-Python reference is the "
+        "subject-level mean across available backend-equivalent AMICA-Python "
+        "runs.",
     ]
     for r in rows:
         caption_lines.append(

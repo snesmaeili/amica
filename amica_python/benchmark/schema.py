@@ -96,6 +96,7 @@ ITERATION_TRACE_COLUMNS = [
 METHOD_COLORS = {
     "AMICA-Python": "#D7263D",       # red
     "AMICA-Python (JAX-GPU)": "#D7263D",
+    "AMICA-Python (JAX-CPU)": "#E4572E",
     "AMICA-Python (NumPy-CPU)": "#9A1D2B",
     "Fortran AMICA": "#7A1424",      # darker red/brown
     "Picard": "#FF8C42",             # warm orange
