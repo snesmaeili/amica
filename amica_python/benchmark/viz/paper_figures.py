@@ -578,7 +578,7 @@ def plot_cumulative_dipolarity(
         ax.set_ylim(0, 100)
         for thr in (5, 10):
             ax.axvline(thr, ls="--", color="#888", lw=0.7)
-        ax.set_title("Figure 1. A. Cumulative near-dipolar components", loc="left", fontweight="bold")
+        ax.set_title("A. Cumulative near-dipolar components", loc="left", fontweight="bold")
         ax.legend(frameon=False, loc="upper left", fontsize=8)
 
         zoom_mask = (rv_grid >= 1.0) & (rv_grid <= 15.0)
@@ -913,7 +913,7 @@ def plot_quality_summary(
             fontsize=8,
         )
 
-    suptitle = "Figure 2. ICA decomposition quality (Frank 2022 style)"
+    suptitle = "ICA decomposition quality (Frank 2022 style)"
     if proxy_label:
         suptitle += f" -- {proxy_label}"
     fig.suptitle(suptitle, fontsize=11, fontweight="bold", y=1.02)
@@ -1108,7 +1108,7 @@ def plot_mir_comparison(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Pat
                 fontsize=8,
             )
 
-        fig.suptitle("Figure 4. MIR comparison", x=0.01, y=1.02, ha="left", fontweight="bold")
+        fig.suptitle("MIR comparison", x=0.01, y=1.02, ha="left", fontweight="bold")
         _apply_run_mode_banner(fig, bench_df, y=1.035)
         diff_paths = _save(fig, out_dir, "fig04_mir_difference")
         plt.close(fig)
@@ -1138,50 +1138,103 @@ def plot_mir_comparison(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Pat
 # ---------------------------------------------------------------------------
 
 def plot_runtime_summary(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Path) -> tuple[Path | None, str]:
+    """Figure 5: per-method fit runtime as median + IQR with per-subject dots.
+
+    Audit-driven change: the previous mean +/- SD was misleading for Infomax
+    (SD > mean from a single outlier subject), so we now report median (IQR)
+    with a strip of individual subject points and an explicit failed-to-
+    converge count drawn from ``converged_before_cap`` / ``n_iter_actual``.
+    """
     set_paper_style()
-    summary = _method_summary(bench_df)
-    if summary.empty or "fit_runtime_s" not in summary.columns:
+    if "fit_runtime_s" not in bench_df.columns:
         return None, "no runtime data"
-    df = summary.dropna(subset=["fit_runtime_s"]).copy()
-    if df.empty:
+    df_raw = bench_df.dropna(subset=["fit_runtime_s"]).copy()
+    if df_raw.empty:
         return None, "no runtime data"
-    df = df.sort_values("fit_runtime_s", ascending=True, kind="mergesort")
 
-    x = np.arange(len(df))
-    means = df["fit_runtime_s"].to_numpy(dtype=float)
-    std_col = "fit_runtime_s_std"
-    yerr = df[std_col].fillna(0).to_numpy(dtype=float) if std_col in df.columns else None
+    group_cols = [c for c in ("method", "backend", "device") if c in df_raw.columns]
+    # Build per-method stats (median + IQR + min/max + convergence failures).
+    stats_rows = []
+    for keys, sub in df_raw.groupby(group_cols, sort=False, dropna=False):
+        if not isinstance(keys, tuple):
+            keys = (keys,)
+        rt = sub["fit_runtime_s"].to_numpy(dtype=float)
+        rt = rt[np.isfinite(rt)]
+        if rt.size == 0:
+            continue
+        # Convergence failure: explicit flag if available, else hit max_iter.
+        n_failed = 0
+        if "converged_before_cap" in sub.columns:
+            flag = sub["converged_before_cap"]
+            n_failed = int((flag.astype(bool) == False).sum())  # noqa: E712
+        elif {"n_iter_actual", "max_iter"}.issubset(sub.columns):
+            n_failed = int((sub["n_iter_actual"] >= sub["max_iter"]).sum())
+        row = {col: val for col, val in zip(group_cols, keys)}
+        row.update({
+            "n": int(rt.size),
+            "mean": float(np.mean(rt)),
+            "sd": float(np.std(rt, ddof=1)) if rt.size > 1 else float("nan"),
+            "median": float(np.median(rt)),
+            "q25": float(np.percentile(rt, 25)),
+            "q75": float(np.percentile(rt, 75)),
+            "min": float(np.min(rt)),
+            "max": float(np.max(rt)),
+            "n_failed_to_converge": n_failed,
+        })
+        row["display_label"] = _display_method_name(row.get("method", ""))
+        stats_rows.append((row, rt))
 
-    fig, ax = plt.subplots(figsize=(7.8, 4.0))
-    colors = [_color_for(m) for m in df["method"]]
-    bars = ax.bar(x, means, color=colors, width=0.72)
-    if yerr is not None and np.isfinite(yerr).any():
-        ax.errorbar(x, means, yerr=yerr, fmt="none", ecolor="#222", elinewidth=0.8, capsize=2)
+    if not stats_rows:
+        return None, "no runtime data"
+
+    # Sort ascending by median so the figure ordering matches the summary table.
+    stats_rows.sort(key=lambda r: r[0]["median"])
+    rows = [r for r, _ in stats_rows]
+    runtimes = [rt for _, rt in stats_rows]
+
+    fig, ax = plt.subplots(figsize=(7.8, 4.4))
+    x = np.arange(len(rows))
+    medians = np.array([r["median"] for r in rows])
+    q25 = np.array([r["q25"] for r in rows])
+    q75 = np.array([r["q75"] for r in rows])
+    yerr = np.vstack([medians - q25, q75 - medians])  # asymmetric IQR whiskers
+    colors = [_color_for(r["method"]) for r in rows]
+    bars = ax.bar(x, medians, color=colors, width=0.62, alpha=0.85, zorder=2)
+    ax.errorbar(x, medians, yerr=yerr, fmt="none", ecolor="#222",
+                elinewidth=0.9, capsize=3, zorder=3)
+    # Per-subject dot strip on top of each bar so the spread is explicit.
+    rng = np.random.default_rng(0)
+    for i, rt in enumerate(runtimes):
+        jitter = rng.normal(0.0, 0.06, size=rt.size)
+        ax.scatter(np.full(rt.size, i, dtype=float) + jitter, rt,
+                   color="black", s=10, alpha=0.55, edgecolor="none", zorder=4)
     ax.set_yscale("log")
     ax.set_ylabel("Fit runtime (s, log)")
-    ax.set_title("Figure 5. Fit runtime by method (engineering benchmark)", loc="left", fontweight="bold")
+    ax.set_title("Fit runtime by method (engineering benchmark)", loc="left", fontweight="bold")
     ax.set_xticks(x)
-    ax.set_xticklabels(df["display_label"], rotation=25, ha="right", fontsize=8)
-    for bar, mean, std in zip(bars, means, yerr if yerr is not None else np.zeros_like(means)):
-        label = f"{mean:,.0f} s" if not np.isfinite(std) or std == 0 else f"{mean:,.0f} +/- {std:,.0f} s"
-        label_y = (mean + std) * 1.08 if np.isfinite(std) else mean * 1.08
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            label_y,
-            label,
-            ha="center",
-            va="bottom",
-            fontsize=7,
-        )
+    ax.set_xticklabels([r["display_label"] for r in rows], rotation=25, ha="right", fontsize=8)
+    for bar, row in zip(bars, rows):
+        label = f"{row['median']:,.0f} s\nIQR [{row['q25']:,.0f}, {row['q75']:,.0f}]"
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                row["q75"] * 1.10,
+                label,
+                ha="center", va="bottom", fontsize=7)
     fig.tight_layout()
     _apply_run_mode_banner(fig, bench_df)
     paths = _save(fig, out_dir, "fig05_runtime")
     plt.close(fig)
+
+    # Persist runtime stats table for the manuscript.
+    pd.DataFrame(rows).to_csv(out_dir / "fig05_runtime_stats.csv", index=False)
+
     caption = (
         "Figure 5. Fit runtime per method, log scale. Bars show across-subject "
-        "mean fit runtime; whiskers show standard deviation. This is an "
-        "engineering benchmark: AMICA-Python JAX-GPU uses GPU acceleration, "
-        "whereas the comparator methods and NumPy AMICA are CPU runs."
+        "median fit runtime; whiskers show the inter-quartile range (Q1, Q3); "
+        "dots are individual subjects. This is an engineering benchmark: "
+        "AMICA-Python JAX-GPU uses GPU acceleration, whereas the comparator "
+        "methods and NumPy AMICA are CPU runs. Per-method failed-to-converge "
+        "counts and full distribution statistics are persisted alongside the "
+        "figure in fig05_runtime_stats.csv."
     )
     _write_caption(captions_dir, "fig05_runtime", caption, bench_df=bench_df)
     return Path(paths[0]), caption
@@ -1296,9 +1349,9 @@ def plot_amica_convergence(iter_df: pd.DataFrame, out_dir: Path, captions_dir: P
         axes[1].axvline(axv, ls="--", color="#888", lw=0.6)
     axes[1].legend(frameon=False, loc="upper right", fontsize=8)
     if n_subjects == 1:
-        fig.suptitle("Figure 7. AMICA convergence (single-subject pilot)", fontweight="bold")
+        fig.suptitle("AMICA convergence (single-subject pilot)", fontweight="bold")
     else:
-        fig.suptitle("Figure 7. AMICA convergence", fontweight="bold")
+        fig.suptitle("AMICA convergence", fontweight="bold")
     fig.tight_layout()
     _apply_run_mode_banner(fig, bench_df, y=1.04)
     paths = _save(fig, out_dir, "fig07_amica_iterations")
@@ -1435,7 +1488,7 @@ def plot_data_sufficiency(bench_df: pd.DataFrame, out_dir: Path, captions_dir: P
     ax.set_ylim(len(df) - 0.5, -1.45)
     ax.set_xlabel("κ = n_samples / n² (log scale)")
     ax.set_ylabel("Subject (sorted by κ_channels)")
-    ax.set_title("Figure 8. Data-sufficiency κ diagnostic (Frank 2025)", loc="left", fontweight="bold", pad=14)
+    ax.set_title("Data-sufficiency κ diagnostic (Frank 2025)", loc="left", fontweight="bold", pad=14)
     ax.grid(axis="x", color="#DDDDDD", lw=0.5)
     handles = [
         plt.Line2D([0], [0], marker="o", color="none", markerfacecolor="#4477AA", markeredgecolor="black", markersize=5, label="κ_channels"),
@@ -1529,15 +1582,61 @@ def plot_paired_mir_difference(
             t_stat = float(t_stat); p_two = float(p_two)
         except Exception:
             t_stat, p_two = float("nan"), float("nan")
+        # Wilcoxon signed-rank (non-parametric paired test).
+        try:
+            w_res = _scistats.wilcoxon(diff, alternative="two-sided", zero_method="wilcox")
+            w_stat, w_p = float(w_res.statistic), float(w_res.pvalue)
+        except Exception:
+            w_stat, w_p = float("nan"), float("nan")
+        # Sign-flip permutation test on the paired differences.
+        try:
+            def _mean_stat(x):
+                return float(np.mean(x))
+            perm_res = _scistats.permutation_test(
+                (diff,),
+                _mean_stat,
+                permutation_type="samples",  # sign-flip
+                n_resamples=10_000,
+                alternative="two-sided",
+                random_state=np.random.default_rng(0),
+            )
+            perm_p = float(perm_res.pvalue)
+        except Exception:
+            perm_p = float("nan")
         rows.append({
             "comparator": comp,
             "comparator_label": _display_method_name(comp),
             "n": n, "diff": diff,
             "mean": mean, "sd": sd, "ci_half": ci_half,
             "cohen_dz": cohen_dz, "t_stat": t_stat, "p_two_sided": p_two,
+            "wilcoxon_stat": w_stat, "wilcoxon_p": w_p,
+            "perm_p": perm_p,
         })
     if not rows:
         return None, "no paired comparator/AMICA cells with >=2 subjects"
+
+    # Holm-Bonferroni adjustment across the comparator contrasts.
+    def _holm(p_values):
+        """Step-down Holm-Bonferroni adjusted p-values, preserving order."""
+        p_arr = np.asarray(p_values, dtype=float)
+        n_p = len(p_arr)
+        order = np.argsort(p_arr)
+        adj = np.full(n_p, np.nan)
+        running_max = 0.0
+        for k, idx in enumerate(order):
+            scale = float(n_p - k)
+            cand = min(1.0, p_arr[idx] * scale)
+            running_max = max(running_max, cand)
+            adj[idx] = running_max
+        return adj
+
+    p_t_arr = [r["p_two_sided"] for r in rows]
+    p_w_arr = [r["wilcoxon_p"] for r in rows]
+    p_t_holm = _holm(p_t_arr)
+    p_w_holm = _holm(p_w_arr)
+    for r, p_t_h, p_w_h in zip(rows, p_t_holm, p_w_holm):
+        r["p_holm"] = float(p_t_h)
+        r["p_wilcoxon_holm"] = float(p_w_h)
 
     fig, ax = plt.subplots(figsize=(2.0 + 1.8 * len(rows), 5.4))
     x = np.arange(len(rows))
@@ -1562,20 +1661,26 @@ def plot_paired_mir_difference(
                                        0.56, 2 * r["ci_half"],
                                        facecolor="none", edgecolor="black", lw=1.0, zorder=4))
         # Significance star + p-value + Cohen's d_z above the highest data point.
-        sig = "***" if r["p_two_sided"] < 1e-3 else "**" if r["p_two_sided"] < 1e-2 else "*" if r["p_two_sided"] < 0.05 else "ns"
+        # Use the Holm-adjusted t-test p for the star (worst case across robustness checks).
+        p_star = r.get("p_holm", r["p_two_sided"])
+        sig = "***" if p_star < 1e-3 else "**" if p_star < 1e-2 else "*" if p_star < 0.05 else "ns"
         top = max(d) if len(d) else r["mean"]
         ax.text(i, top + 0.04 * y_range, sig,
                 ha="center", va="bottom", fontsize=12, fontweight="bold", color="#222")
         ax.text(i, top + 0.13 * y_range,
                 f"p = {r['p_two_sided']:.1e}\n$d_z$ = {r['cohen_dz']:+.2f}",
                 ha="center", va="bottom", fontsize=8, color="#222")
+        # Robustness sub-line: Wilcoxon + Holm-adjusted t-test p.
+        ax.text(i, top + 0.22 * y_range,
+                f"W p = {r['wilcoxon_p']:.1e}\nHolm p = {r['p_holm']:.1e}",
+                ha="center", va="bottom", fontsize=7, color="#555")
     ax.axhline(0, color="#888", lw=0.8, ls="--")
     ax.set_xlim(-0.55, len(rows) - 0.45)
     ax.set_ylim(y_bot, y_top)
     ax.set_xticks(x)
     ax.set_xticklabels([f"{ref_label}\n−\n{r['comparator_label']}" for r in rows], fontsize=8)
     ax.set_ylabel("Δ MIR (kbits/sec), paired per subject")
-    ax.set_title(f"Figure 9. Paired Δ MIR ({ref_label} − comparator), n={rows[0]['n']} subjects",
+    ax.set_title(f"Paired Δ MIR ({ref_label} − comparator), n={rows[0]['n']} subjects",
                  loc="left", fontweight="bold", pad=12)
     fig.tight_layout()
     _apply_run_mode_banner(fig, bench_df)
@@ -1589,8 +1694,11 @@ def plot_paired_mir_difference(
         f"Figure 9. Per-subject paired Δ MIR between {ref_label} (reference) and "
         "each comparator. Dots: one subject's (reference − comparator) MIR "
         "difference in kbits/sec. Black bar: across-subject mean. Black box: "
-        "95% confidence interval of the mean (mean ± 1.96·SE). Significance "
-        "stars from a paired t-test on the same n subjects: * p<0.05, ** p<0.01, "
+        "95% confidence interval of the mean (mean ± 1.96·SE). Primary test: "
+        "paired t-test (p_two_sided). Robustness checks shown alongside each "
+        "contrast: Wilcoxon signed-rank (W p) and Holm-Bonferroni-adjusted "
+        "t-test p across the three AMICA-vs-comparator contrasts (Holm p). "
+        "Significance stars use Holm-adjusted t-test p: * p<0.05, ** p<0.01, "
         "*** p<0.001, ns = not significant. d_z is Cohen's standardized effect "
         "size for paired differences. The AMICA-Python reference is the "
         "subject-level mean across available backend-equivalent AMICA-Python "
@@ -1600,7 +1708,10 @@ def plot_paired_mir_difference(
         caption_lines.append(
             f"  {ref_label} − {r['comparator_label']}: "
             f"mean Δ = {r['mean']:+.3f} kbits/sec (95% CI ±{r['ci_half']:.3f}), "
-            f"n={r['n']}, t={r['t_stat']:+.2f}, p={r['p_two_sided']:.2e}, d_z={r['cohen_dz']:+.2f}."
+            f"n={r['n']}, t={r['t_stat']:+.2f}, p={r['p_two_sided']:.2e}, "
+            f"Holm p={r['p_holm']:.2e}, "
+            f"Wilcoxon p={r['wilcoxon_p']:.2e} (Holm-adj {r['p_wilcoxon_holm']:.2e}), "
+            f"perm p={r['perm_p']:.2e}, d_z={r['cohen_dz']:+.2f}."
         )
     caption = "\n".join(caption_lines)
     _write_caption(captions_dir, "fig09_paired_mir_difference", caption, bench_df=bench_df)
