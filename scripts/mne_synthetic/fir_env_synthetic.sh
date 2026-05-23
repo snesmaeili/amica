@@ -1,6 +1,8 @@
 #!/bin/bash
 # FIR cluster environment setup for MNE-native synthetic AMICA benchmark.
-# Clone of cc_benchmark/fir_env.sh with a synthetic-specific results dir.
+# Clone of cc_benchmark/fir_env.sh with a synthetic-specific results dir
+# and an extra dependency-ensure step for nibabel + python-picard (not in
+# the [all,gpu] extras of amica-python).
 # Ref: https://github.com/BabaSanfour/crash-course/tree/main/module_05_advanced_alliance_ai_workflows
 
 # Caches to scratch
@@ -46,4 +48,29 @@ if [ ! -d "$VENV_PATH" ]; then
     exit 1
 fi
 source "$VENV_PATH/bin/activate"
-echo "[fir_env_synthetic] venv $VENV_PATH activated; AMICA_SYNTH_RESULTS_DIR=$AMICA_SYNTH_RESULTS_DIR"
+
+# --- Ensure extra deps (nibabel for parcellation surface geometry, python-picard
+# for mne.preprocessing.ICA(method='picard')). Only install on compute nodes;
+# never on login nodes (global CLAUDE.md hard rule).
+HOST="$(hostname)"
+if [[ "$HOST" == login* ]]; then
+    for pair in "nibabel:nibabel" "picard:python-picard"; do
+        import_name="${pair%%:*}"
+        pip_name="${pair##*:}"
+        if ! python -c "import $import_name" 2>/dev/null; then
+            echo "[fir_env_synthetic] WARN: $pip_name missing on $HOST (login node); will be installed inside the next sbatch job" >&2
+        fi
+    done
+else
+    for pair in "nibabel:nibabel" "picard:python-picard"; do
+        import_name="${pair%%:*}"
+        pip_name="${pair##*:}"
+        if ! python -c "import $import_name" 2>/dev/null; then
+            echo "[fir_env_synthetic] installing $pip_name on $HOST..."
+            pip install --no-index "$pip_name" 2>/dev/null \
+                || pip install "$pip_name"
+        fi
+    done
+fi
+
+echo "[fir_env_synthetic] venv $VENV_PATH activated on $HOST; AMICA_SYNTH_RESULTS_DIR=$AMICA_SYNTH_RESULTS_DIR"
