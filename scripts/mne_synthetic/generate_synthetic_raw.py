@@ -159,22 +159,92 @@ def _select_source_vertices(subjects_dir, n_true, parcellation,
     return records[:n_true]
 
 
-def _build_laplacian_sources(n_true, n_samples_sim, sfreq_sim, bandpass_hz,
-                             amplitude_nAm, seed):
-    """Per-source independent Laplacian noise, bandpassed to [low, high]."""
+def _draw_one_source(rng, kind: str, n_samples: int, sfreq: float, params: dict) -> np.ndarray:
+    """Generate one raw source signal of the requested kind. Returns 1D array."""
+    if kind == "laplacian":
+        return rng.laplace(loc=0.0, scale=1.0, size=n_samples)
+    if kind == "student_t":
+        df = float(params.get("df", 3.0))
+        return rng.standard_t(df=df, size=n_samples)
+    if kind == "uniform":
+        return rng.uniform(low=-1.0, high=1.0, size=n_samples)
+    if kind == "exponential_signed":
+        # Asymmetric heavy-tailed: signed exponential
+        signs = rng.choice([-1.0, 1.0], size=n_samples)
+        return signs * rng.exponential(scale=1.0, size=n_samples)
+    if kind == "sinusoid":
+        freq = float(params.get("freq_hz", 10.0))
+        t = np.arange(n_samples) / float(sfreq)
+        noise_amp = float(params.get("noise_amp", 0.1))
+        return np.sin(2.0 * np.pi * freq * t) + noise_amp * rng.standard_normal(n_samples)
+    if kind == "ar1":
+        # AR(1) coloured noise (temporally autocorrelated, sub-Gaussian)
+        alpha = float(params.get("alpha", 0.95))
+        x = np.zeros(n_samples)
+        innov = rng.standard_normal(n_samples)
+        x[0] = innov[0]
+        for t in range(1, n_samples):
+            x[t] = alpha * x[t - 1] + innov[t]
+        return x
+    raise ValueError(f"Unknown source kind: {kind!r}")
+
+
+def _build_source_waveforms(n_true, n_samples_sim, sfreq_sim, bandpass_hz,
+                            amplitude_nAm, seed, waveform_cfg):
+    """Build per-source waveforms with either homogeneous or heterogeneous kinds.
+
+    waveform_cfg["kind"]:
+      - "laplacian"   : all sources are independent Laplacian (original v1 behaviour)
+      - "mixture"     : sources cycle through waveform_cfg["mixture_kinds"], each
+                        an entry with {kind: <str>, params: {...}}
+
+    All sources are bandpassed to [low, high] and normalised to unit RMS,
+    then scaled to `amplitude_nAm` and converted to A*m for MNE.
+    """
     import mne
     rng = np.random.default_rng(seed)
-    # Laplace with unit scale -> RMS = sqrt(2). Normalise per-row.
-    raw_lap = rng.laplace(loc=0.0, scale=1.0, size=(n_true, n_samples_sim))
-    raw_lap = raw_lap / raw_lap.std(axis=1, keepdims=True)  # unit per-source RMS
+    kind = waveform_cfg.get("kind", "laplacian")
+    if kind == "laplacian":
+        spec_list = [{"kind": "laplacian", "params": {}}] * n_true
+    elif kind == "mixture":
+        mix = list(waveform_cfg.get("mixture_kinds", []))
+        if not mix:
+            raise ValueError("mixture waveform requires 'mixture_kinds' list")
+        # Assign distributions to sources by cycling, then shuffle deterministically
+        # so the same seed gives the same source -> kind assignment.
+        assignment = [mix[i % len(mix)] for i in range(n_true)]
+        order = rng.permutation(n_true)
+        spec_list = [assignment[i] for i in order]
+    else:
+        raise ValueError(f"Unknown waveform.kind: {kind!r}")
+
+    raw_signals = np.zeros((n_true, n_samples_sim), dtype=np.float64)
+    for i, spec in enumerate(spec_list):
+        sig = _draw_one_source(
+            rng, spec["kind"], n_samples_sim, sfreq_sim,
+            params=dict(spec.get("params", {})))
+        sd = sig.std()
+        raw_signals[i] = sig / sd if sd > 0 else sig
+
     low, high = float(bandpass_hz[0]), float(bandpass_hz[1])
     filtered = mne.filter.filter_data(
-        raw_lap.astype(np.float64), sfreq=float(sfreq_sim),
+        raw_signals, sfreq=float(sfreq_sim),
         l_freq=low, h_freq=high, verbose=False)
     # Restore unit RMS after filtering (bandpass attenuates), then scale to amplitude
-    filtered = filtered / filtered.std(axis=1, keepdims=True)
-    # MNE expects source waveforms in A*m (Ampere-metre). amplitude_nAm * 1e-9 -> A*m
-    return (filtered * float(amplitude_nAm) * 1e-9).astype(np.float64)
+    sd = filtered.std(axis=1, keepdims=True)
+    sd = np.where(sd == 0, 1.0, sd)
+    filtered = filtered / sd
+    # MNE expects source waveforms in A*m (Ampere-metre).
+    return (filtered * float(amplitude_nAm) * 1e-9).astype(np.float64), spec_list
+
+
+# Back-compat alias used by an earlier revision of generate().
+def _build_laplacian_sources(n_true, n_samples_sim, sfreq_sim, bandpass_hz,
+                             amplitude_nAm, seed):
+    arr, _ = _build_source_waveforms(
+        n_true, n_samples_sim, sfreq_sim, bandpass_hz, amplitude_nAm, seed,
+        waveform_cfg={"kind": "laplacian"})
+    return arr
 
 
 def generate(config: dict, condition_id: str, seed: int, cache_dir: Path,
@@ -256,9 +326,10 @@ def generate(config: dict, condition_id: str, seed: int, cache_dir: Path,
         label_rs, fwd_fixed["src"], verbose=verbose)
 
     n_samples_sim = int(round(duration_s * sfreq_sim))
-    # ---- Build per-source Laplacian waveforms ----
-    src_waveforms_Am = _build_laplacian_sources(
-        n_true, n_samples_sim, sfreq_sim, bandpass_hz, amplitude_nAm, seed)
+    # ---- Build per-source waveforms (homogeneous Laplacian or heterogeneous mixture) ----
+    src_waveforms_Am, spec_list = _build_source_waveforms(
+        n_true, n_samples_sim, sfreq_sim, bandpass_hz, amplitude_nAm, seed,
+        waveform_cfg)
 
     # ---- Build SourceEstimate with chosen vertices ----
     lh_set = sorted({r["vertex_id"] for r in vertex_records if r["hemi"] == "lh"})
@@ -377,6 +448,7 @@ def generate(config: dict, condition_id: str, seed: int, cache_dir: Path,
         "n_samples": int(raw.n_times),
         "sfreq_final": float(raw.info["sfreq"]),
         "vertex_records": vertex_records,
+        "source_waveform_spec": spec_list,
         "n_true_sources": int(n_true),
         "config_relevant": {
             "forward": config["forward"],

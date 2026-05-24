@@ -14,7 +14,7 @@ cd "$SLURM_SUBMIT_DIR"
 source fir_env_synthetic.sh
 
 python run_one_synthetic.py \
-    --config configs/benchmark_v1.json \
+    --config "${AMICA_SYNTH_CONFIG:-configs/benchmark_v1.json}" \
     --method numpy_cpu \
     --task-index "$SLURM_ARRAY_TASK_ID" \
     --results-dir "$AMICA_SYNTH_RESULTS_DIR"
