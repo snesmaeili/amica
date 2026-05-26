@@ -145,22 +145,6 @@ def main(csv_path: Path, out_path: Path) -> None:
                   loc="left", fontsize=10, fontweight="bold")
     axB.grid(axis="x", which="both", linestyle=":", linewidth=0.5, alpha=0.5)
 
-    gpu_med = float(
-        S_sorted[S_sorted["method"] == "AMICA-Python (JAX-GPU)"]["runtime_median"].iloc[0]
-    )
-    numpy_med = float(
-        S_sorted[S_sorted["method"] == "AMICA-Python (NumPy-CPU)"]["runtime_median"].iloc[0]
-    )
-    ratio = numpy_med / gpu_med
-    axB.text(
-        0.97, 0.06,
-        f"AMICA NumPy-CPU / JAX-GPU\n$\\approx {ratio:.0f}\\times$ slower",
-        transform=axB.transAxes, ha="right", va="bottom",
-        fontsize=8.5, color="#08306b", fontweight="bold",
-        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#08306b",
-                  lw=0.6, alpha=0.9),
-    )
-
     fig.tight_layout()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, bbox_inches="tight")
