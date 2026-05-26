@@ -55,7 +55,7 @@ digraph AMICAPythonArchitecture {
 
     // Shared core
     core [
-        label="Shared AMICA numerical core\n\nEM loop\nE-step responsibilities\nM-step density updates: α, μ, β, ρ\nM-step unmixing: natural gradient → quasi-Newton\nlikelihood and timing logs",
+        label="Shared AMICA numerical core\n\nEM loop\nE-step responsibilities\nM-step density updates: α, μ, β, ρ\nM-step unmixing: natural gradient → pairwise quasi-Newton\nlikelihood and timing logs",
         fillcolor="#E7F3F1",
         penwidth=2.2
     ];
@@ -72,7 +72,7 @@ digraph AMICAPythonArchitecture {
     ];
 
     state [
-        label="State and configuration\n\nAmicaConfig\nrandom_state",
+        label="State and configuration\n\nAmicaConfig\nAmicaResult\nrandom_state",
         fillcolor="#F8FAFC"
     ];
 
@@ -83,13 +83,13 @@ digraph AMICAPythonArchitecture {
     ];
 
     result [
-        label="Low-level output\nAmica.transform / inverse_transform\nreturns AmicaResult",
+        label="Low-level output\nAmicaResult\ntransform / inverse_transform",
         fillcolor="#EEF7F6"
     ];
 
     // Validation strip
     validation [
-        label="Validation boundaries\n\nFortran parity  |  backend agreement  |  chunked/full-batch agreement  |  MNE API conformance",
+        label="Validation targets\n\nFortran parity  |  backend agreement  |  chunked/full-batch agreement  |  MNE API conformance",
         fillcolor="#FFF4E6",
         color="#C65F00",
         penwidth=1.8
