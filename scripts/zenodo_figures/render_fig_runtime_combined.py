@@ -70,8 +70,17 @@ def main(csv_path: Path, out_path: Path) -> None:
         amica_pts["runtime_median"], amica_pts["mir_mean"],
         color="0.55", linewidth=1.0, linestyle="-", zorder=1,
     )
-    for _, r in S.iterrows():
-        m = r["method"]
+    # Plot one method at a time so each gets its own legend entry.
+    METHOD_ORDER = [
+        "AMICA-Python (JAX-GPU)",
+        "AMICA-Python (JAX-CPU)",
+        "AMICA-Python (NumPy-CPU)",
+        "Picard",
+        "Infomax",
+        "FastICA",
+    ]
+    for m in METHOD_ORDER:
+        r = S[S["method"] == m].iloc[0]
         rt = r["runtime_median"]
         mir = r["mir_mean"]
         axA.errorbar(
@@ -81,23 +90,7 @@ def main(csv_path: Path, out_path: Path) -> None:
             fmt=MARKERS[m], color=PALETTE[m], ecolor=PALETTE[m],
             markersize=10, markeredgecolor="black", markeredgewidth=0.6,
             capsize=2.5, lw=1.0, alpha=0.95, zorder=3,
-        )
-        ha, va, dx, dy = "left", "bottom", 1.10, 1.012
-        if m == "AMICA-Python (JAX-GPU)":
-            ha, dx = "right", 0.93
-        elif m == "Infomax":
-            ha, dx, dy = "right", 0.92, 1.006
-        elif m == "FastICA":
-            ha, dx, dy = "left", 1.05, 0.978
-        elif m == "Picard":
-            ha, dx, dy = "left", 1.05, 0.978
-        elif m == "AMICA-Python (JAX-CPU)":
-            ha, dx, dy = "right", 0.95, 1.02
-        elif m == "AMICA-Python (NumPy-CPU)":
-            ha, dx, dy = "left", 1.04, 1.02
-        axA.text(
-            rt * dx, mir * dy, DISPLAY_INLINE[m],
-            ha=ha, va=va, fontsize=8.5, color=PALETTE[m], fontweight="bold",
+            label=DISPLAY_INLINE[m],
         )
 
     axA.set_xscale("log")
@@ -107,12 +100,19 @@ def main(csv_path: Path, out_path: Path) -> None:
     axA.set_xlim(30, 60000)
     axA.annotate(
         "better", xy=(45, 5.05), xytext=(220, 5.05),
-        ha="center", va="center", fontsize=9, color="0.35", fontstyle="italic",
+        ha="center", va="center", fontsize=9, color="0.35",
+        fontstyle="italic",
         arrowprops=dict(arrowstyle="->", color="0.55", lw=1.0),
     )
     axA.grid(True, which="both", linestyle=":", linewidth=0.5, alpha=0.5)
     axA.set_title("A. Quality–cost trade-off",
                   loc="left", fontsize=10, fontweight="bold")
+    # Legend in bottom-right (low MIR + high runtime corner, normally empty).
+    axA.legend(
+        loc="lower right", frameon=True, framealpha=0.95,
+        edgecolor="0.8", fontsize=8.5, handlelength=1.2,
+        borderpad=0.4, labelspacing=0.3,
+    )
 
     # --- Panel B: runtime distribution ---------------------------------
     axB = fig.add_subplot(gs[0, 1])
