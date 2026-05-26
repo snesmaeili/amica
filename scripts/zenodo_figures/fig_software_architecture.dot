@@ -72,7 +72,7 @@ digraph AMICAPythonArchitecture {
     ];
 
     state [
-        label="State and configuration\n\nAmicaConfig\nAmicaResult\nrandom_state",
+        label="State and configuration\n\nAmicaConfig\nrandom_state",
         fillcolor="#F8FAFC"
     ];
 
@@ -83,7 +83,7 @@ digraph AMICAPythonArchitecture {
     ];
 
     result [
-        label="Low-level output\nAmicaResult\ntransform / inverse_transform",
+        label="Low-level output\nAmica.transform / inverse_transform\nreturns AmicaResult",
         fillcolor="#EEF7F6"
     ];
 
