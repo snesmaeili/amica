@@ -476,7 +476,13 @@ def _apply_run_mode_banner(fig, bench_df, *, y: float = 1.02) -> None:
     """Add a one-line run-mode banner just above the figure (red if PILOT).
 
     Works whether the figure already has a suptitle or a per-panel set_title.
+    Suppressed if the environment variable ``AMICA_NO_RUN_MODE_BANNER=1`` is
+    set; this is used when re-rendering paper-ready figures (the banner is a
+    cluster-side safety mechanism that does not belong in a published PDF).
     """
+    import os as _os
+    if _os.environ.get("AMICA_NO_RUN_MODE_BANNER") == "1":
+        return
     label, color = _run_mode_label(bench_df)
     fig.text(0.5, y, label, ha="center", va="bottom",
              fontsize=9, fontweight="bold", color=color)
