@@ -30,9 +30,9 @@ python -m pytest tests/ -v
 
 ### Backend coverage
 
-CI runs the **NumPy backend only** (no JAX install, no GPU billing). JAX
-tests must be run locally before merging anything that touches the solver or
-accumulator:
+CI runs **NumPy** (all Python versions) and **JAX-CPU** (Python 3.12 only).
+JAX-GPU tests must be run locally before merging anything that touches the
+solver or accumulator:
 
 ```bash
 # JAX-CPU (requires jax installed: pip install -e ".[jax]")
