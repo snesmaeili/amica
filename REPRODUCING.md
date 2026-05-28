@@ -61,7 +61,7 @@ pip install -e ".[all]" "jax[cuda12]>=0.4"
 Verify:
 
 ```bash
-python -c "import amica_python; print(amica_python.__version__)"
+python -c "import amica_python; print(amica_python)"
 python -c "import jax; print(jax.devices())"   # should show gpu device
 ```
 
@@ -127,6 +127,18 @@ openneuro.download('ds004505', target_dir='/your/path/ds004505')
 export BIDS_ROOT_DS4505=/your/path/ds004505
 ```
 
+> **Note — `--input-level`**: the value depends on what was downloaded.
+>
+> | Layout on disk | Flag to use |
+> |---|---|
+> | `sub-XX/eeg/*.set` (standard BIDS) | `--input-level bids` |
+> | `sourcedata/Merged/sub-XX/*.set` (openneuro-py default) | `--input-level merged` |
+> | try BIDS first, fall back to Merged | `--input-level auto` (default) |
+>
+> The paper cluster run used `--input-level bids` (pre-processed BIDS files on
+> the Alliance Canada filesystem). A fresh `openneuro.download` produces the
+> `sourcedata/Merged/` layout, so use `--input-level merged` in that case.
+
 ---
 
 ## Step 5 — Run the real-EEG benchmark (Figs 5–8, S1–S2)
@@ -134,10 +146,31 @@ export BIDS_ROOT_DS4505=/your/path/ds004505
 ### Option A — local, one subject at a time (GPU recommended)
 
 Run all 25 subjects × all backends (paper used H100 for JAX-GPU; CPU
-backends take ~7–8 hours per subject):
+backends take ~7–8 hours per subject). Replace `--input-level merged` with
+`bids` or `auto` to match your download layout (see note in Step 4).
+
+**Single-subject test first (recommended before running all 25):**
+
+```bash
+# JAX-GPU, sub-01 only
+BIDS_ROOT_DS4505=/your/path/ds004505 \
+AMICA_COMPUTE_DIPOLES=0 \
+  python -m amica_python.benchmark.runner \
+    --dataset ds004505 \
+    --subject 1 \
+    --backend jax \
+    --device gpu \
+    --n-iter 3000 \
+    --input-level merged \
+    --schema-version v3 \
+    --output-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
+```
+
+**All 25 subjects:**
 
 ```bash
 # JAX-GPU backend (paper-exact; needs CUDA)
+# Single subject: replace $(seq 1 25) with a single number, e.g. --subject 1
 for i in $(seq 1 25); do
   AMICA_COMPUTE_DIPOLES=1 \
     python -m amica_python.benchmark.runner \
@@ -146,12 +179,13 @@ for i in $(seq 1 25); do
       --backend jax \
       --device gpu \
       --n-iter 3000 \
-      --input-level bids \
+      --input-level merged \
       --schema-version v3 \
       --output-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
 done
 
 # JAX-CPU backend
+# Single subject: --subject 1
 for i in $(seq 1 25); do
   AMICA_COMPUTE_DIPOLES=1 \
     python -m amica_python.benchmark.runner \
@@ -160,12 +194,13 @@ for i in $(seq 1 25); do
       --backend jax \
       --device cpu \
       --n-iter 3000 \
-      --input-level bids \
+      --input-level merged \
       --schema-version v3 \
       --output-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
 done
 
 # NumPy-CPU backend
+# Single subject: --subject 1
 for i in $(seq 1 25); do
   AMICA_COMPUTE_DIPOLES=0 \
     python -m amica_python.benchmark.runner \
@@ -174,12 +209,13 @@ for i in $(seq 1 25); do
       --backend numpy \
       --device cpu \
       --n-iter 3000 \
-      --input-level bids \
+      --input-level merged \
       --schema-version v3 \
       --output-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
 done
 
 # Comparators: Picard, Infomax, FastICA
+# Single subject example: --subject 1 --method picard
 for method in picard infomax fastica; do
   for i in $(seq 1 25); do
     AMICA_COMPUTE_DIPOLES=1 \
@@ -187,7 +223,7 @@ for method in picard infomax fastica; do
         --dataset ds004505 \
         --subject $i \
         --method $method \
-        --input-level bids \
+        --input-level merged \
         --schema-version v3 \
         --output-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
   done
