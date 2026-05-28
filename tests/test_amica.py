@@ -635,6 +635,44 @@ def test_amica_wrapper(tiny_data):
     assert W2.shape == (4, 4)
 
 
+def test_picard_api_parity(tiny_data):
+    """amica() return signature matches picard() exactly.
+
+    Verifies that the same call MNE makes to picard() works identically
+    with amica() — same X shape, same keyword args, same unpack pattern.
+    Does not check numerical agreement (different algorithms).
+    """
+    picard_mod = pytest.importorskip("picard")
+    from amica_python.solver import amica
+
+    # MNE passes data[:, sel].T → (n_components, n_samples)
+    X = tiny_data  # (4, 200)
+
+    # Exact MNE calling pattern: _, W, _, n_iter = func(X, whiten=False, return_n_iter=True, ...)
+    K_p, W_p, Y_p, n_iter_p = picard_mod.picard(
+        X, whiten=False, return_n_iter=True, random_state=42
+    )
+    K_a, W_a, Y_a, n_iter_a = amica(
+        X, whiten=False, return_n_iter=True, random_state=42
+    )
+
+    # K: picard returns None when whiten=False
+    assert K_p is None
+    assert K_a is None
+
+    # W and Y shapes must match
+    assert W_a.shape == W_p.shape
+    assert Y_a.shape == Y_p.shape
+
+    # n_iter: both ints > 0
+    assert isinstance(n_iter_a, int) and n_iter_a > 0
+    assert isinstance(n_iter_p, int) and n_iter_p > 0
+
+    # MNE unpack pattern works without error
+    _, W_mne, _, _ = amica(X, whiten=False, return_n_iter=True, random_state=42)
+    assert W_mne.shape == (X.shape[0], X.shape[0])
+
+
 def test_result_to_mne(tiny_data, monkeypatch):
     """Test AmicaResult.to_mne(info) method."""
     import sys
