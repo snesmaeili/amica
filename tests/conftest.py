@@ -39,9 +39,12 @@ def pytest_configure(config):
     # Must be set before any jax import.
     if backend == "gpu":
         os.environ["JAX_PLATFORM_NAME"] = "gpu"
+        os.environ.pop("AMICA_NO_JAX", None)
     elif backend == "cpu":
         os.environ["JAX_PLATFORM_NAME"] = "cpu"
-    # numpy: leave JAX_PLATFORM_NAME unset; tests that need it skip via marker
+        os.environ.pop("AMICA_NO_JAX", None)
+    else:  # numpy
+        os.environ["AMICA_NO_JAX"] = "1"
 
     config.addinivalue_line("markers", "gpu: requires --backend=gpu and a reachable JAX GPU")
     config.addinivalue_line("markers", "slow: long-running test; pass --run-slow to include")
