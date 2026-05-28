@@ -714,6 +714,63 @@ def test_rejection_path(tiny_data):
     assert res.n_iter == 2
 
 
+def test_rejection_behavioral():
+    """Behavioral checks for sample rejection on contaminated data.
+
+    Assertions:
+    - Output matrix shapes are correct (rejection is internal; outputs are full-rank).
+    - W @ A ≈ I in whitened space (inverse relationship preserved after rejection).
+    - Final LL is higher with rejection than without on spike-contaminated data.
+    """
+    from amica_python import Amica, AmicaConfig
+
+    rng = np.random.RandomState(7)
+    n_ch, n_samp = 6, 2000
+
+    # Clean Laplacian sources
+    S = rng.laplace(size=(n_ch, n_samp))
+    A_true = rng.randn(n_ch, n_ch)
+    data = A_true @ S
+
+    # Inject large-amplitude spikes into 5% of samples
+    n_spike = n_samp // 20
+    spike_idx = rng.choice(n_samp, size=n_spike, replace=False)
+    data_contaminated = data.copy()
+    data_contaminated[:, spike_idx] *= 50.0
+
+    shared_cfg = dict(
+        max_iter=60,
+        num_mix_comps=2,
+        do_newton=False,
+        rejstart=10,
+        rejint=5,
+        numrej=3,
+        rejsig=3.0,
+    )
+
+    solver_rej = Amica(AmicaConfig(**shared_cfg, do_reject=True), random_state=42)
+    res_rej = solver_rej.fit(data_contaminated)
+
+    solver_no = Amica(AmicaConfig(**shared_cfg, do_reject=False), random_state=42)
+    res_no = solver_no.fit(data_contaminated)
+
+    # Shape: rejection is internal; outputs always (n_ch, n_ch)
+    assert res_rej.unmixing_matrix_white_.shape == (n_ch, n_ch)
+    assert res_rej.mixing_matrix_white_.shape == (n_ch, n_ch)
+
+    # W @ A ≈ I in whitened space
+    WA = res_rej.unmixing_matrix_white_ @ res_rej.mixing_matrix_white_
+    np.testing.assert_allclose(WA, np.eye(n_ch), atol=1e-10,
+                               err_msg="W @ A != I after rejection")
+
+    # Rejection must improve final LL on contaminated data
+    ll_rej = res_rej.log_likelihood[-1]
+    ll_no = res_no.log_likelihood[-1]
+    assert ll_rej > ll_no, (
+        f"Rejection did not improve LL: with_reject={ll_rej:.4f}, no_reject={ll_no:.4f}"
+    )
+
+
 def test_amica_wrapper(tiny_data):
     """Test the Picard-style amica() wrapper function."""
     from amica_python.solver import amica
