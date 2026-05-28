@@ -816,6 +816,62 @@ def test_result_to_mne(tiny_data, monkeypatch):
     assert ica.n_components_ == 4
 
 
+def test_checkpoint_resume_bit_exact(tmp_path):
+    """50 iters + save + resume 50 iters must be bit-exact to a single 100-iter run.
+
+    Requires lratefact=rholratefact=1.0 so lrate is constant (not affected by LL
+    history which differs between the two runs), do_newton=False (no Newton lrate
+    ramp), and do_mean=False (c=0 throughout; c is not restored by init_params).
+    """
+    from amica_python import Amica, AmicaConfig
+
+    rng = np.random.RandomState(0)
+    n_ch, n_samp = 4, 2000
+    S = rng.laplace(size=(n_ch, n_samp))
+    A_true = rng.randn(n_ch, n_ch)
+    data = (A_true @ S).astype(np.float64)
+
+    shared = dict(
+        num_mix_comps=2,
+        do_newton=False,
+        do_mean=False,
+        lratefact=1.0,
+        rholratefact=1.0,
+    )
+
+    # Run A: 100 iters straight through
+    res_full = Amica(AmicaConfig(max_iter=100, **shared), random_state=42).fit(data)
+    W_100 = res_full.unmixing_matrix_white_
+
+    # Run B: 50 iters → save checkpoint
+    ckpt = tmp_path / "ckpt"
+    res_50 = Amica(
+        AmicaConfig(max_iter=50, outdir=ckpt, writestep=50, **shared), random_state=42
+    ).fit(data)
+
+    # Resume from checkpoint for 50 more iters
+    init_params = {
+        "alpha": res_50.alpha_,
+        "mu": res_50.mu_,
+        "sbeta": res_50.sbeta_,
+        "rho": res_50.rho_,
+    }
+    res_resumed = Amica(AmicaConfig(max_iter=50, **shared), random_state=42).fit(
+        data,
+        init_weights=res_50.unmixing_matrix_white_,
+        init_params=init_params,
+    )
+    W_50_50 = res_resumed.unmixing_matrix_white_
+
+    # JAX JIT may reorder FP ops between compilations → allow machine-eps slack.
+    # atol=1e-13 is ~50× tighter than 1e-12 (round-trip tests) and catches any
+    # algorithmic divergence (actual observed diff ≈ 6e-15).
+    np.testing.assert_allclose(
+        W_100, W_50_50, atol=1e-13,
+        err_msg="50+50 checkpoint resume diverged from single 100-iter run",
+    )
+
+
 def test_solver_init_paths(tiny_data):
     """Test solver initialization paths with fixed init and initial params."""
     from amica_python import Amica, AmicaConfig
