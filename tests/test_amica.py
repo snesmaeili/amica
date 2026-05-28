@@ -1,5 +1,9 @@
 """Tests for amica-python package."""
 
+import os
+import subprocess
+import sys
+
 import numpy as np
 import pytest
 
@@ -775,3 +779,92 @@ def test_solver_init_paths(tiny_data):
     config2 = AmicaConfig(max_iter=1)
     solver2 = Amica(config2, random_state=42)
     solver2.fit(tiny_data, init_weights=W_init, init_params=params)
+
+
+# ---------------------------------------------------------------------------
+# Backend parity: JAX-CPU vs NumPy-CPU
+# ---------------------------------------------------------------------------
+
+_BACKEND_PARITY_SCRIPT = """
+import os, sys, numpy as np
+backend = sys.argv[1]   # "jax" or "numpy"
+data_path = sys.argv[2]
+out_path = sys.argv[3]
+
+if backend == "numpy":
+    os.environ["AMICA_NO_JAX"] = "1"
+else:
+    os.environ.pop("AMICA_NO_JAX", None)
+    os.environ["JAX_PLATFORM_NAME"] = "cpu"
+
+from amica_python import Amica, AmicaConfig
+
+data = np.load(data_path)
+config = AmicaConfig(max_iter=100, num_mix_comps=2, do_newton=False)
+solver = Amica(config, random_state=42)
+result = solver.fit(data)
+np.save(out_path, result.unmixing_matrix_white_)
+"""
+
+
+def _run_backend(backend, data_path, out_path):
+    env = os.environ.copy()
+    env.pop("AMICA_NO_JAX", None)
+    subprocess.run(
+        [sys.executable, "-c", _BACKEND_PARITY_SCRIPT, backend,
+         str(data_path), str(out_path)],
+        check=True,
+        env=env,
+        capture_output=True,
+    )
+
+
+def _align_and_compare(W_ref, W_test):
+    """Match rows by max-abs correlation; return max off-component residual."""
+    n = W_ref.shape[0]
+    # Normalise rows to unit norm for correlation
+    W_r = W_ref / (np.linalg.norm(W_ref, axis=1, keepdims=True) + 1e-12)
+    W_t = W_test / (np.linalg.norm(W_test, axis=1, keepdims=True) + 1e-12)
+    corr = np.abs(W_r @ W_t.T)  # (n, n) absolute cosine similarities
+    used = set()
+    max_sim = []
+    for i in range(n):
+        row = corr[i].copy()
+        for j in used:
+            row[j] = -1
+        best = int(np.argmax(row))
+        max_sim.append(corr[i, best])
+        used.add(best)
+    return np.min(max_sim)   # worst matched component similarity
+
+
+@pytest.mark.slow
+def test_backend_parity_jax_vs_numpy(tmp_path):
+    """JAX-CPU and NumPy backends must converge to equivalent unmixing matrices.
+
+    Uses synthetic Laplacian data where the mixing solution is well-determined.
+    Checks that every matched component pair has cosine similarity > 0.99.
+    Marks slow because it spawns two subprocesses running 100 iterations each.
+    """
+    rng = np.random.RandomState(0)
+    n_src, n_samp = 4, 3000
+    S = rng.laplace(size=(n_src, n_samp))
+    A_true = rng.randn(n_src, n_src)
+    data = (A_true @ S).astype(np.float64)
+
+    data_path = tmp_path / "data.npy"
+    np.save(data_path, data)
+
+    jax_out = tmp_path / "W_jax.npy"
+    numpy_out = tmp_path / "W_numpy.npy"
+
+    _run_backend("jax", data_path, jax_out)
+    _run_backend("numpy", data_path, numpy_out)
+
+    W_jax = np.load(jax_out)
+    W_numpy = np.load(numpy_out)
+
+    min_sim = _align_and_compare(W_jax, W_numpy)
+    assert min_sim > 0.99, (
+        f"Worst component cosine similarity between JAX-CPU and NumPy: {min_sim:.4f} < 0.99"
+    )
