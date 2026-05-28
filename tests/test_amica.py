@@ -432,6 +432,100 @@ def test_chunked_path_no_updates(tiny_data):
     solver.fit(tiny_data)
 
 
+# ---------------------------------------------------------------------------
+# Auto chunk_size tests
+# ---------------------------------------------------------------------------
+
+def test_auto_chunk_size_returns_valid_int():
+    """_choose_chunk_size returns int in [1, n_samples]."""
+    from amica_python.solver import _choose_chunk_size
+
+    cs = _choose_chunk_size(n_samples=10000, n_components=32, n_mix_comps=3)
+    assert isinstance(cs, int)
+    assert 1 <= cs <= 10000
+
+
+def test_auto_chunk_size_bounded_by_n_samples():
+    """_choose_chunk_size never exceeds n_samples."""
+    from amica_python.solver import _choose_chunk_size
+
+    cs = _choose_chunk_size(n_samples=100, n_components=4, n_mix_comps=3)
+    assert cs <= 100
+
+
+def test_auto_chunk_size_small_budget():
+    """_choose_chunk_size returns small chunk when available RAM is tiny."""
+    psutil = pytest.importorskip("psutil")
+    from unittest.mock import MagicMock, patch
+    from amica_python.solver import _choose_chunk_size
+
+    mock_vmem = MagicMock()
+    mock_vmem.available = 5 * 1024 * 1024  # 5 MiB
+    with patch.object(psutil, "virtual_memory", return_value=mock_vmem):
+        cs = _choose_chunk_size(
+            n_samples=500_000, n_components=64, n_mix_comps=3, memory_fraction=1.0
+        )
+    assert cs < 500_000
+
+
+def test_chunk_size_auto_config_accepted():
+    """AmicaConfig accepts chunk_size='auto' without error."""
+    from amica_python.config import AmicaConfig
+
+    cfg = AmicaConfig(chunk_size="auto")
+    assert cfg.chunk_size == "auto"
+
+
+def test_chunk_size_auto_config_rejects_bad_string():
+    """AmicaConfig rejects unknown string for chunk_size."""
+    from amica_python.config import AmicaConfig
+
+    with pytest.raises(ValueError, match="chunk_size"):
+        AmicaConfig(chunk_size="bad")
+
+
+def test_chunk_size_auto_fit_completes(tiny_data):
+    """chunk_size='auto' fit runs without error."""
+    from amica_python import Amica, AmicaConfig
+
+    res = Amica(AmicaConfig(chunk_size="auto", max_iter=3), random_state=42).fit(tiny_data)
+    assert res.n_iter == 3
+
+
+def test_chunk_size_auto_matches_fullbatch(tiny_data):
+    """chunk_size='auto' on data that fits in RAM gives same W as full-batch."""
+    from amica_python import Amica, AmicaConfig
+
+    kw = dict(max_iter=10, dtype="float64")
+    res_full = Amica(AmicaConfig(**kw, chunk_size=None), random_state=42).fit(tiny_data)
+    res_auto = Amica(AmicaConfig(**kw, chunk_size="auto"), random_state=42).fit(tiny_data)
+    np.testing.assert_allclose(
+        np.asarray(res_auto.unmixing_matrix_white_),
+        np.asarray(res_full.unmixing_matrix_white_),
+        atol=1e-10,
+    )
+
+
+def test_chunk_size_auto_takes_chunked_path_when_forced():
+    """chunk_size='auto' uses chunked E-step when psutil reports tiny RAM."""
+    psutil = pytest.importorskip("psutil")
+    from unittest.mock import MagicMock, patch
+    from amica_python import Amica, AmicaConfig
+
+    rng = np.random.RandomState(0)
+    srcs = rng.laplace(size=(4, 2000))
+    x = rng.randn(4, 4) @ srcs
+
+    mock_vmem = MagicMock()
+    mock_vmem.available = 1 * 1024 * 1024  # 1 MiB — forces tiny chunk
+    with patch.object(psutil, "virtual_memory", return_value=mock_vmem):
+        res = Amica(
+            AmicaConfig(chunk_size="auto", max_iter=5, dtype="float64"), random_state=42
+        ).fit(x)
+    assert res.n_iter == 5
+    assert np.all(np.isfinite(np.asarray(res.unmixing_matrix_white_)))
+
+
 def test_float32_dtype(tiny_data):
     """Test float32 precision mode."""
     from amica_python import Amica, AmicaConfig

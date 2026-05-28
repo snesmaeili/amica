@@ -704,6 +704,52 @@ class AmicaResult:
         return ica
 
 
+def _choose_chunk_size(
+    n_samples: int,
+    n_components: int,
+    n_mix_comps: int,
+    dtype: np.dtype = np.float64,
+    memory_fraction: float = 0.25,
+) -> int:
+    """Return chunk_size that keeps hot-buffer allocation within available RAM.
+
+    Hot buffers per chunk: y and g (n_comp × B each) plus per-mixture
+    intermediates (~5 × n_comp × n_mix × B). Formula mirrors scott-huberty's
+    choose_batch_size() adapted for our single-model NumPy/JAX buffers.
+
+    Falls back to a 2 GiB budget when psutil is not installed.
+    Returns n_samples when everything fits (caller treats as full-batch).
+    """
+    dtype_size = np.dtype(dtype).itemsize
+    bytes_per_sample = int(
+        (1 + 2 * n_components + 5 * n_components * n_mix_comps) * dtype_size * 1.2
+    )
+
+    try:
+        import psutil
+        avail = psutil.virtual_memory().available
+        budget = min(float(avail) * memory_fraction, 4.0 * 1024 ** 3)
+    except Exception:
+        budget = 2.0 * 1024 ** 3  # 2 GiB fallback
+
+    max_chunk = int(budget // bytes_per_sample)
+    if max_chunk < 1:
+        raise MemoryError(
+            f"Cannot fit even 1 sample in {budget / 1024**3:.1f} GiB budget. "
+            f"Per-sample cost: {bytes_per_sample / 1024:.1f} KB."
+        )
+
+    chunk = min(n_samples, max_chunk)
+    min_chunk = min(max(8192, n_components * 32), n_samples)
+    if chunk < min_chunk:
+        logger.warning(
+            "Auto chunk_size %d is below recommended minimum %d. "
+            "Free memory or reduce n_components to avoid very small chunks.",
+            chunk, min_chunk,
+        )
+    return chunk
+
+
 class Amica:
     """Native JAX implementation of AMICA algorithm.
 
@@ -951,6 +997,29 @@ class Amica:
         update_beta_static = self.config.update_beta
         update_rho_static = self.config.update_rho
 
+        # Resolve effective chunk size once (avoids psutil call each iteration)
+        _cfg_cs = self.config.chunk_size
+        if _cfg_cs == "auto":
+            _eff_chunk_size = _choose_chunk_size(
+                n_samples, n_components, self.config.num_mix_comps, dtype=np.float64,
+            )
+            if _eff_chunk_size >= n_samples:
+                _eff_chunk_size = None  # everything fits — full batch
+            else:
+                logger.info("Auto chunk_size: %d samples", _eff_chunk_size)
+        elif isinstance(_cfg_cs, int):
+            _eff_chunk_size = _cfg_cs
+        else:
+            _eff_chunk_size = None  # None = full batch
+
+        if _eff_chunk_size is not None:
+            _cs = _eff_chunk_size
+
+            def _step_fn(*args, _cs=_cs):
+                return _amica_step_chunked(*args, chunk_size=_cs)
+        else:
+            _step_fn = _amica_step
+
         # Ensure initial state is JAX array with correct dtype
         W = jnp.asarray(W, dtype=dtype)
         A = jnp.asarray(A, dtype=dtype)
@@ -989,15 +1058,6 @@ class Amica:
             ceiling = newtrate if in_newton else lrate0
             lrate = min(ceiling, lrate + min(1.0 / self.config.newt_ramp, lrate))
 
-            # Dispatch: full-batch (default) or chunked E-step
-            if self.config.chunk_size is not None:
-                cs = self.config.chunk_size
-
-                def _step_fn(*args, cs=cs):
-                    return _amica_step_chunked(*args, chunk_size=cs)
-
-            else:
-                _step_fn = _amica_step
             (
                 W_new,
                 A_new,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal, Union
 
 
 @dataclass
@@ -164,12 +165,11 @@ class AmicaConfig:
     update_beta: bool = True
     update_rho: bool = True
 
-    # Time-axis chunking for the E-step accumulator. None = full-batch
-    # (default, preserves current behavior). Set to e.g. 1024 on CPU to
-    # reduce peak RAM from O(T*M*n*J) to O(chunk_t*M*n*J). The per-iteration
-    # objective is unchanged (algebraic identity, not mini-batch SGD) — one
-    # M-step per iteration on the accumulated sufficient statistics.
-    chunk_size: int | None = None
+    # Time-axis chunking for the E-step accumulator.
+    #   None     — full-batch (default; preserves existing behaviour)
+    #   "auto"   — use psutil to pick chunk_size that fits in ~25% of available RAM
+    #   int >= 1 — explicit chunk size in samples
+    chunk_size: Union[int, Literal["auto"], None] = None
 
     def __post_init__(self):
         """Validate configuration."""
@@ -189,7 +189,8 @@ class AmicaConfig:
             raise ValueError("max_decs must be >= 0")
         if self.max_incs < 0:
             raise ValueError("max_incs must be >= 0")
-        if self.chunk_size is not None and self.chunk_size < 1:
-            raise ValueError("chunk_size must be >= 1 or None")
+        if self.chunk_size is not None and self.chunk_size != "auto":
+            if not isinstance(self.chunk_size, int) or self.chunk_size < 1:
+                raise ValueError("chunk_size must be an int >= 1, 'auto', or None")
         if self.outdir is not None:
             self.outdir = Path(self.outdir)
