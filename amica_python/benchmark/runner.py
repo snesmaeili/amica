@@ -915,7 +915,8 @@ def reaggregate_from_ica(json_path, ica_path, raw, *,
 
 
 def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
-                  n_components: int | None = None, include_artifacts=False, return_ica=False):
+                  n_components: int | None = None, chunk_size=None,
+                  include_artifacts=False, return_ica=False):
     """Run AMICA and record metrics.
 
     Parameters
@@ -923,6 +924,10 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
     n_components : int, optional
         Number of ICs to keep. Defaults to ``min(64, n_channels)``. Pass a
         smaller value (e.g. 32) to reduce GPU VRAM use on consumer GPUs.
+    chunk_size : int | "auto" | None
+        E-step chunk size in samples. None = full-batch (default). "auto" =
+        pick via psutil (system RAM; does not account for GPU VRAM). An explicit
+        int (e.g. 10000) is required to cap GPU memory use.
 
     If return_ica=True, returns (metrics, ica) so the caller can persist an
     `ica.fif` sidecar next to the JSON for downstream notebook/figure use.
@@ -949,9 +954,14 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
 
     from amica_python import fit_ica
 
+    fit_params = {}
+    if chunk_size is not None:
+        fit_params["chunk_size"] = chunk_size
+
     tracemalloc.start()
     start_time = time.perf_counter()
-    ica = fit_ica(raw, n_components=n_components, max_iter=n_iter)
+    ica = fit_ica(raw, n_components=n_components, max_iter=n_iter,
+                  fit_params=fit_params or None)
     duration = time.perf_counter() - start_time
     _, peak_bytes = tracemalloc.get_traced_memory()
     tracemalloc.stop()
@@ -1022,6 +1032,13 @@ def main():
     parser.add_argument("--task", type=str, default=None,
                         help="BIDS task name (auto-detected if omitted)")
     parser.add_argument("--n-iter", type=int, default=500)
+    parser.add_argument("--n-components", type=int, default=None,
+                        help="Number of ICA components (default: min(64, n_channels)). "
+                             "Reduce to lower GPU VRAM use on consumer GPUs.")
+    parser.add_argument("--chunk-size", default=None,
+                        help="E-step chunk size in samples: int, 'auto', or omit for "
+                             "full-batch. Use e.g. 10000 to cap GPU memory on datasets "
+                             "with many samples.")
     parser.add_argument("--duration-sec", type=float, default=None,
                         help="Crop to the first N seconds before filtering/fitting")
     parser.add_argument("--resample", type=float, default=None,
@@ -1034,6 +1051,14 @@ def main():
     parser.add_argument("--schema-version", choices=["legacy", "v3"], default="legacy",
                         help="Write legacy flat JSON or paper-compatible v3 JSON")
     args = parser.parse_args()
+
+    # Parse --chunk-size: accept int string or "auto"
+    chunk_size = None
+    if args.chunk_size is not None:
+        if args.chunk_size == "auto":
+            chunk_size = "auto"
+        else:
+            chunk_size = int(args.chunk_size)
 
     # Resolve output directory
     output_dir = args.output_dir or os.environ.get("AMICA_RESULTS_DIR", "results")
@@ -1076,6 +1101,8 @@ def main():
             backend=args.backend,
             device=args.device,
             n_iter=args.n_iter,
+            n_components=args.n_components,
+            chunk_size=chunk_size,
             include_artifacts=args.schema_version == "v3",
             return_ica=True,
         )
