@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [main, production-ready-amica]
+    branches: [main, production-ready-amica, ci-tests-improvements]
   pull_request:
-    branches: [main, production-ready-amica]
+    branches: [main, production-ready-amica, ci-tests-improvements]
   workflow_dispatch:
 
 concurrency:
@@ -41,10 +41,8 @@ jobs:
           fi
 
       - name: Run tests
-        env:
-          AMICA_NO_JAX: ${{ matrix.backend == 'numpy' && '1' || '0' }}
         run: |
-          python -m pytest tests/ -v --tb=short --cov=amica_python --cov-report=xml -n auto
+          python -m pytest tests/ -v --tb=short --backend=${{ matrix.backend == 'numpy' && 'numpy' || 'cpu' }} --cov=amica_python --cov-report=xml -n auto
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
