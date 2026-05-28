@@ -1515,19 +1515,23 @@ def amica(
 ):
     """Adaptive Mixture ICA (AMICA).
 
-    Compatible with MNE-Python's ``ICA(method='amica')``.
-    Follows the Picard integration pattern.
+    Follows the :func:`picard.picard` calling convention so it can be used
+    as a drop-in replacement in custom pipelines and in MNE-Python's
+    ``ICA`` dispatch (``method='amica'``).
 
     Parameters
     ----------
-    X : ndarray, shape (n_samples, n_components)
-        Pre-whitened data (MNE convention: samples x components).
+    X : ndarray, shape (n_features, n_samples)
+        Pre-whitened data, features × samples.  This matches the picard
+        convention; MNE passes ``data[:, sel].T`` which gives
+        (n_components, n_samples).
     n_components : int or None
-        Number of components. If None, uses X.shape[1].
+        Number of components. If None, uses X.shape[0].
     whiten : bool
-        If True, whiten the data. MNE passes False (pre-whitened).
+        If True, whiten the data internally. MNE always passes False
+        (data is pre-whitened by MNE's PCA step).
     return_n_iter : bool
-        If True, return (W, n_iter) tuple.
+        If True, return n_iter as a fourth element: ``K, W, Y, n_iter``.
     random_state : int or None
         Random seed for reproducibility.
     max_iter : int
@@ -1539,16 +1543,19 @@ def amica(
 
     Returns
     -------
+    K : None
+        Pre-whitening matrix.  Always None when ``whiten=False``.
+        Included for picard API compatibility; MNE discards this value.
     W : ndarray, shape (n_components, n_components)
-        Unmixing matrix.
+        Unmixing matrix (operates on whitened data).
+    Y : ndarray, shape (n_components, n_samples)
+        Source matrix: ``W @ X``.
     n_iter : int
-        Number of iterations (only if return_n_iter=True).
+        Number of iterations. Only returned when ``return_n_iter=True``,
+        as the fourth element.
     """
     from .config import AmicaConfig
 
-    # random_state is passed to Amica solver, which uses jax.random.PRNGKey
-
-    # Build config from kwargs
     cfg_kwargs = {
         "max_iter": max_iter,
         "num_mix_comps": num_mix,
@@ -1558,14 +1565,14 @@ def amica(
     cfg_kwargs.update(kwargs)
     config = AmicaConfig(**cfg_kwargs)
 
-    # AMICA expects (n_channels, n_samples), MNE passes (n_samples, n_components)
-    data = X.T  # (n_components, n_samples)
-
+    # X is (n_features, n_samples) — same shape the AMICA solver expects.
     solver = Amica(config, random_state=random_state)
-    result = solver.fit(data)
+    result = solver.fit(X)
 
+    K = None  # whiten=False: MNE pre-whitens; kept for picard API parity
     W = result.unmixing_matrix_white_  # (n_components, n_components)
+    Y = W @ X                          # (n_components, n_samples)
 
     if return_n_iter:
-        return W, result.n_iter
-    return W
+        return K, W, Y, result.n_iter
+    return K, W, Y

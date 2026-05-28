@@ -58,7 +58,9 @@ For drop-in replacement in custom ICA pipelines:
 ```python
 from amica_python import amica
 
-W, n_iter = amica(X, return_n_iter=True)  # X: (n_samples, n_components)
+# X: (n_features, n_samples) — same convention as picard
+K, W, Y = amica(X)
+K, W, Y, n_iter = amica(X, return_n_iter=True)
 ```
 
 ## Background

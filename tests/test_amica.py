@@ -83,12 +83,14 @@ def test_amica_function():
     from amica_python import amica
 
     rng = np.random.RandomState(42)
-    n_samples, n_components = 500, 4
-    # MNE convention: (n_samples, n_components)
-    X = rng.randn(n_samples, n_components)
+    n_components, n_samples = 4, 500
+    # picard convention: (n_features, n_samples)
+    X = rng.randn(n_components, n_samples)
 
-    W = amica(X, max_iter=20, num_mix=2)
+    K, W, Y = amica(X, max_iter=20, num_mix=2)
+    assert K is None
     assert W.shape == (n_components, n_components)
+    assert Y.shape == (n_components, n_samples)
 
 
 def test_amica_return_n_iter():
@@ -96,10 +98,12 @@ def test_amica_return_n_iter():
     from amica_python import amica
 
     rng = np.random.RandomState(42)
-    X = rng.randn(500, 4)
+    X = rng.randn(4, 500)
 
-    W, n_iter = amica(X, max_iter=20, num_mix=2, return_n_iter=True)
+    K, W, Y, n_iter = amica(X, max_iter=20, num_mix=2, return_n_iter=True)
+    assert K is None
     assert W.shape == (4, 4)
+    assert Y.shape == (4, 500)
     assert isinstance(n_iter, int)
     assert n_iter > 0
 
@@ -614,17 +618,20 @@ def test_rejection_behavioral():
 
 
 def test_amica_wrapper(tiny_data):
-    """Test the Picard-style amica() wrapper function."""
+    """Test the picard-compatible amica() wrapper function."""
     from amica_python.solver import amica
 
-    # Needs samples x components (transpose of tiny_data)
-    X = tiny_data.T
+    # tiny_data is (n_channels, n_samples) — same as picard convention
+    X = tiny_data
 
-    W, n_iter = amica(X, max_iter=2, return_n_iter=True, random_state=42)
+    K, W, Y, n_iter = amica(X, max_iter=2, return_n_iter=True, random_state=42)
+    assert K is None
     assert W.shape == (4, 4)
+    assert Y.shape == X.shape
     assert n_iter == 2
 
-    W2 = amica(X, max_iter=1, return_n_iter=False)
+    K2, W2, Y2 = amica(X, max_iter=1, return_n_iter=False)
+    assert K2 is None
     assert W2.shape == (4, 4)
 
 
