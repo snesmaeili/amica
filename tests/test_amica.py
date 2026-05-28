@@ -222,6 +222,33 @@ def test_invalid_config():
         AmicaConfig(maxrho=3.0)
 
 
+@pytest.mark.parametrize(
+    "bad_data,label",
+    [
+        (np.full((4, 100), np.nan), "all-NaN"),
+        (np.full((4, 100), np.inf), "all-Inf"),
+        (np.full((4, 100), -np.inf), "all-neg-Inf"),
+        # one bad sample injected into otherwise clean data
+        (lambda: _inject(np.random.RandomState(0).randn(4, 100), 0, 50, np.nan), "one-NaN"),
+        (lambda: _inject(np.random.RandomState(0).randn(4, 100), 1, 20, np.inf), "one-Inf"),
+    ],
+    ids=["all-NaN", "all-Inf", "all-neg-Inf", "one-NaN", "one-Inf"],
+)
+def test_nonfinite_input_raises(bad_data, label):
+    """Fit must raise ValueError on NaN or Inf input."""
+    from amica_python import Amica, AmicaConfig
+
+    data = bad_data() if callable(bad_data) else bad_data
+    model = Amica(AmicaConfig(max_iter=2), random_state=0)
+    with pytest.raises(ValueError, match="non-finite"):
+        model.fit(data)
+
+
+def _inject(arr, row, col, value):
+    arr[row, col] = value
+    return arr
+
+
 """Test sample rejection feature."""
 
 

@@ -39,7 +39,7 @@ benchmark = [
     "tabulate>=0.9",
     "onnxruntime>=1.15",
 ]
-test = ["pytest>=7.0", "pytest-cov", "pytest-xdist"]
+test = ["pytest>=7.0", "pytest-cov", "pytest-xdist", "pytest-timeout"]
 dev = ["amica-python[test]", "sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme", "myst-parser", "pre-commit>=3.0", "ruff>=0.9", "towncrier>=23.0", "nox"]
 all = ["jax>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "amica-python[benchmark]"]
 
@@ -48,6 +48,7 @@ test = [
     "pytest>=7.0",
     "pytest-cov",
     "pytest-xdist",
+    "pytest-timeout",
 ]
 docs = [
     "sphinx>=5.0",
@@ -128,6 +129,7 @@ addopts = ["-ra"]
 markers = [
     "gpu: requires --backend=gpu and a reachable JAX GPU device",
     "slow: long-running; pass --run-slow to include",
+    "timeout: per-test timeout in seconds (pytest-timeout)",
 ]
 filterwarnings = [
     "error",

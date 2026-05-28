@@ -850,6 +850,13 @@ class Amica:
         data = np.asarray(data, dtype=np.float64)
         if data.ndim != 2:
             raise ValueError(f"Data must be 2D, got shape {data.shape}")
+        nan_count = int(np.isnan(data).sum())
+        inf_count = int(np.isinf(data).sum())
+        if nan_count or inf_count:
+            raise ValueError(
+                f"Input data contains non-finite values: {nan_count} NaN, {inf_count} Inf. "
+                "Interpolate or remove bad channels/epochs before fitting."
+            )
 
         # Check for potential unit mismatch (uV vs Volts)
         # Amica (and Engine parity) works best with Volts (std ~ 1e-5 to 1e-4)
