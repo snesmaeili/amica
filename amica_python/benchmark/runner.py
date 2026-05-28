@@ -14,6 +14,7 @@ import json
 import os
 import platform
 import time
+import tracemalloc
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -948,9 +949,15 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
 
     from amica_python import fit_ica
 
+    tracemalloc.start()
     start_time = time.perf_counter()
     ica = fit_ica(raw, n_components=n_components, max_iter=n_iter)
     duration = time.perf_counter() - start_time
+    _, peak_bytes = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    # tracemalloc tracks Python-level allocations only; accurate for numpy backend,
+    # undercounts for JAX (XLA allocator is outside Python).
+    peak_memory_gb = float(peak_bytes) / (1024 ** 3)
 
     n_iter_actual = int(ica.n_iter_)
     amica_result_obj = getattr(ica, "amica_result_", None)
@@ -973,6 +980,7 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
         # `converged_before_cap` is True only if the underlying AmicaResult
         # also flagged converged (LL-plateau check from the algorithm itself).
         "converged_before_cap": bool(converged_amica_flag and n_iter_actual < int(n_iter)),
+        "peak_memory_gb": peak_memory_gb,
         "n_components": int(n_components),
         "n_channels": int(len(raw.ch_names)),
         "n_samples": int(raw.n_times),
