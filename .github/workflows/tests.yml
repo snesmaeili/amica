@@ -14,10 +14,13 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # JAX (CPU/GPU) tests are excluded from CI — they require billing-grade
+    # runners or self-hosted GPU hardware. Run locally with:
+    #   pytest tests/ --backend=cpu   (JAX-CPU)
+    #   pytest tests/ --backend=gpu   (JAX-GPU, requires CUDA)
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        backend: ["jax", "numpy"]
 
     steps:
       - uses: actions/checkout@v4
@@ -34,15 +37,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          if [ "${{ matrix.backend }}" == "jax" ]; then
-            uv pip install -e ".[mne,jax]" --group test --system
-          else
-            uv pip install -e ".[mne]" --group test --system
-          fi
+          uv pip install -e ".[mne]" --group test --system
 
       - name: Run tests
         run: |
-          python -m pytest tests/ -v --tb=short --backend=${{ matrix.backend == 'numpy' && 'numpy' || 'cpu' }} --cov=amica_python --cov-report=xml -n auto
+          python -m pytest tests/ -v --tb=short --backend=numpy --cov=amica_python --cov-report=xml -n auto
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

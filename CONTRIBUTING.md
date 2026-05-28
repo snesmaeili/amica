@@ -28,6 +28,27 @@ Thank you for your interest in contributing to amica-python! This document provi
 python -m pytest tests/ -v
 ```
 
+### Backend coverage
+
+CI runs the **NumPy backend only** (no JAX install, no GPU billing). JAX
+tests must be run locally before merging anything that touches the solver or
+accumulator:
+
+```bash
+# JAX-CPU (requires jax installed: pip install -e ".[jax]")
+pytest tests/ --backend=cpu -v
+
+# JAX-GPU (requires CUDA + jax[cuda12])
+pytest tests/ --backend=gpu -v
+
+# Full suite with slow tests
+pytest tests/ --backend=gpu --run-slow -v
+```
+
+GPU tests (`--backend=gpu`) are the authoritative correctness check for the
+JAX path. The CI NumPy run catches regressions in the shared algorithmic core
+but will not catch JAX-specific failures.
+
 ### Using Nox
 
 We use `nox` to manage development environments and automate tasks. You can run:
