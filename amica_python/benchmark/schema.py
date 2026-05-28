@@ -42,6 +42,8 @@ BENCHMARK_RESULTS_COLUMNS = [
     "fit_runtime_s",
     "total_runtime_s",
     "peak_memory_gb",
+    "peak_cpu_ram_gb",
+    "peak_vram_gb",
     "mir_bits_per_sample",
     "mir_kbits_s",
     "pmi_input_mean_bits",

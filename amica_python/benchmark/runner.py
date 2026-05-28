@@ -914,6 +914,60 @@ def reaggregate_from_ica(json_path, ica_path, raw, *,
     return out_path
 
 
+def _measure_peak_memory(backend, device, fn, /, *args, **kwargs):
+    """Call fn(*args, **kwargs) and capture peak CPU RAM and GPU VRAM.
+
+    Returns
+    -------
+    dict with keys:
+        result          — return value of fn
+        duration_s      — wall-clock seconds
+        peak_cpu_ram_gb — Python-level peak (tracemalloc); accurate for NumPy,
+                          undercounts for JAX (XLA bypasses Python allocator)
+        peak_vram_gb    — GPU peak from XLA memory_stats(); None on CPU/non-JAX
+        peak_memory_gb  — peak_vram_gb if available, else peak_cpu_ram_gb;
+                          convenience field for downstream aggregation
+    """
+    use_jax_gpu = (backend == "jax" and device == "gpu")
+
+    # Snapshot XLA GPU allocator state before run
+    jax_dev = None
+    if use_jax_gpu:
+        try:
+            import jax
+            gpus = jax.devices("gpu")
+            if gpus:
+                jax_dev = gpus[0]
+        except Exception:
+            pass
+
+    tracemalloc.start()
+    start_time = time.perf_counter()
+    result = fn(*args, **kwargs)
+    duration = time.perf_counter() - start_time
+    _, peak_bytes = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    peak_cpu_ram_gb = float(peak_bytes) / (1024 ** 3)
+
+    peak_vram_gb = None
+    if jax_dev is not None:
+        try:
+            stats = jax_dev.memory_stats()
+            if stats is not None and "peak_bytes_in_use" in stats:
+                peak_vram_gb = float(stats["peak_bytes_in_use"]) / (1024 ** 3)
+        except Exception:
+            pass
+
+    return {
+        "result": result,
+        "duration_s": duration,
+        "peak_cpu_ram_gb": peak_cpu_ram_gb,
+        "peak_vram_gb": peak_vram_gb,
+        "peak_memory_gb": peak_vram_gb if peak_vram_gb is not None else peak_cpu_ram_gb,
+    }
+
+
 def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
                   n_components: int | None = None, chunk_size=None,
                   include_artifacts=False, return_ica=False):
@@ -958,16 +1012,13 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
     if chunk_size is not None:
         fit_params["chunk_size"] = chunk_size
 
-    tracemalloc.start()
-    start_time = time.perf_counter()
-    ica = fit_ica(raw, n_components=n_components, max_iter=n_iter,
-                  fit_params=fit_params or None)
-    duration = time.perf_counter() - start_time
-    _, peak_bytes = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-    # tracemalloc tracks Python-level allocations only; accurate for numpy backend,
-    # undercounts for JAX (XLA allocator is outside Python).
-    peak_memory_gb = float(peak_bytes) / (1024 ** 3)
+    mem = _measure_peak_memory(backend, device, fit_ica,
+                               raw, n_components=n_components,
+                               max_iter=n_iter,
+                               fit_params=fit_params or None)
+    ica = mem["result"]
+    duration = mem["duration_s"]
+    peak_memory_gb = mem["peak_memory_gb"]
 
     n_iter_actual = int(ica.n_iter_)
     amica_result_obj = getattr(ica, "amica_result_", None)
@@ -991,6 +1042,8 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
         # also flagged converged (LL-plateau check from the algorithm itself).
         "converged_before_cap": bool(converged_amica_flag and n_iter_actual < int(n_iter)),
         "peak_memory_gb": peak_memory_gb,
+        "peak_cpu_ram_gb": mem["peak_cpu_ram_gb"],
+        "peak_vram_gb": mem["peak_vram_gb"],
         "n_components": int(n_components),
         "n_channels": int(len(raw.ch_names)),
         "n_samples": int(raw.n_times),

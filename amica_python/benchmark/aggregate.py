@@ -150,6 +150,8 @@ def benchmark_row(run: RunPayload) -> dict:
         "fit_runtime_s": p.get("runtime_s"),
         "total_runtime_s": p.get("runtime_s"),
         "peak_memory_gb": p.get("peak_memory_gb"),
+        "peak_cpu_ram_gb": p.get("peak_cpu_ram_gb"),
+        "peak_vram_gb": p.get("peak_vram_gb"),
         "mir_bits_per_sample": _safe_get(p, "complete_mir", "bits_per_sample"),
         "mir_kbits_s": _safe_get(p, "complete_mir", "kbits_per_sec"),
         "pmi_input_mean_bits": _safe_get(p, "pmi", "scalp_PMI_mean"),
