@@ -1103,6 +1103,8 @@ class Amica:
                     kept_idx = np.where(mask_np)[0]
                     data_white = jnp.asarray(np.asarray(data_white)[:, kept_idx])
                     n_samples = data_white.shape[1]
+                    # TODO: store final mask_np in AmicaResult so callers can identify
+                    # rejected samples (e.g. test_rejection_behavioral could assert spikes flagged)
 
             dll = ll_val - ll_prev_val
             if iteration > 0 and self.config.use_min_dll:
