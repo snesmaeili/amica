@@ -167,7 +167,8 @@ class AmicaConfig:
 
     # Time-axis chunking for the E-step accumulator.
     #   None     — full-batch (default; preserves existing behaviour)
-    #   "auto"   — use psutil to pick chunk_size that fits in ~25% of available RAM
+    #   "auto"   — use psutil (~25% of available *system* RAM). Does NOT account for
+    #              GPU VRAM — use an explicit int when running on GPU to avoid OOM.
     #   int >= 1 — explicit chunk size in samples
     chunk_size: Union[int, Literal["auto"], None] = None
 

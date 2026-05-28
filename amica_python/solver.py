@@ -717,6 +717,11 @@ def _choose_chunk_size(
     intermediates (~5 × n_comp × n_mix × B). Formula mirrors scott-huberty's
     choose_batch_size() adapted for our single-model NumPy/JAX buffers.
 
+    **GPU warning**: this function reads *system* RAM via psutil, not GPU VRAM.
+    When running on GPU, "auto" will likely return a chunk too large for VRAM
+    and cause OOM. Pass an explicit int instead (e.g. chunk_size=200000 for an
+    8 GB GPU with 64 components).
+
     Falls back to a 2 GiB budget when psutil is not installed.
     Returns n_samples when everything fits (caller treats as full-batch).
     """

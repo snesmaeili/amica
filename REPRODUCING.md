@@ -374,6 +374,30 @@ python scripts/zenodo_figures/render_fig_synthetic_recovery.py \
 
 ---
 
+## Notes on `--chunk-size` and GPU memory
+
+`chunk_size="auto"` reads **system RAM** via psutil, not GPU VRAM. On a machine
+with 32 GB RAM it will pick a chunk close to full-batch and OOM on an 8 GB GPU.
+
+For GPU runs, compute an explicit value:
+
+```
+bytes_per_sample ≈ (1 + 2×n_comp + 5×n_comp×n_mix) × 8 × 1.2
+                  = (1 + 128 + 960) × 9.6 ≈ 10,454   (64 comp, 3 mix, float64)
+
+chunk_size = gpu_budget_bytes / bytes_per_sample
+```
+
+| GPU VRAM | budget for buffers | chunk_size (64 comp, 3 mix) |
+|----------|-------------------|------------------------------|
+| 8 GB | 4 GB | ~400,000 |
+| 8 GB | 2 GB (conservative) | ~200,000 |
+| 24 GB | 16 GB | ~1,600,000 (likely full-batch) |
+
+`chunk_size="auto"` is safe on CPU-only runs where psutil reads the correct budget.
+
+---
+
 ## Notes on `AMICA_COMPUTE_DIPOLES`
 
 Setting `AMICA_COMPUTE_DIPOLES=0` skips the BEM dipole fitting step. This
