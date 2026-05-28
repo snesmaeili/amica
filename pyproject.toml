@@ -125,6 +125,10 @@ testpaths = ["tests"]
 log_level = "INFO"
 strict = true
 addopts = ["-ra"]
+markers = [
+    "gpu: requires --backend=gpu and a reachable JAX GPU device",
+    "slow: long-running; pass --run-slow to include",
+]
 filterwarnings = [
     "error",
     "ignore:Unrecognized profile:UserWarning",
