@@ -45,8 +45,9 @@ def test_transform_inverse():
     recon = model.inverse_transform(sources)
     assert recon.shape == (n_channels, n_samples)
 
-    err = np.mean((data - recon) ** 2) / np.mean(data**2)
-    assert err < 1e-6, f"Reconstruction NRMSE too high: {err:.2e}"
+    # Linear unmix→remix is algebraically exact; residual should be at machine-eps level.
+    frob_rel = np.linalg.norm(data - recon, "fro") / np.linalg.norm(data, "fro")
+    assert frob_rel < 1e-12, f"Round-trip Frobenius relative residual too high: {frob_rel:.2e}"
 
 
 def test_ll_increases():
@@ -162,9 +163,9 @@ def test_matrix_shapes_and_consistency():
     assert result.unmixing_matrix_sensor_.shape == (n_channels, n_channels)
     assert result.mixing_matrix_sensor_.shape == (n_channels, n_channels)
 
-    # W_white @ A_white ≈ I
+    # W_white @ A_white ≈ I (algebraic identity; machine-eps level)
     WA = result.unmixing_matrix_white_ @ result.mixing_matrix_white_
-    np.testing.assert_allclose(WA, np.eye(n_channels), atol=1e-6)
+    np.testing.assert_allclose(WA, np.eye(n_channels), atol=1e-12)
 
     # sensor unmixing = W_white @ sphere
     expected_sensor = result.unmixing_matrix_white_ @ result.whitener_
@@ -187,9 +188,9 @@ def test_sensor_roundtrip():
     model = Amica(config=config, random_state=42)
     result = model.fit(data)
 
-    # mixing_sensor @ unmixing_sensor should be close to identity
+    # mixing_sensor @ unmixing_sensor should be identity to machine precision
     product = result.mixing_matrix_sensor_ @ result.unmixing_matrix_sensor_
-    np.testing.assert_allclose(product, np.eye(n_channels), atol=1e-6)
+    np.testing.assert_allclose(product, np.eye(n_channels), atol=1e-12)
 
 
 """Test configuration validation."""
@@ -400,9 +401,15 @@ def test_apply_preserves_shape():
     data = rng.randn(4, 1000) * 1e-6
     raw = mne.io.RawArray(data, info)
 
-    ica = fit_ica(raw, n_components=2, max_iter=10, fit_params={"do_newton": False})
+    # Full-rank fit: n_components == n_channels so round-trip is algebraically exact.
+    ica = fit_ica(raw, n_components=4, max_iter=10, fit_params={"do_newton": False})
     raw_clean = ica.apply(raw.copy())
     assert raw_clean.get_data().shape == data.shape
+
+    # apply() with no exclusions and full-rank fit reconstructs to machine precision.
+    recon = ica.apply(raw.copy(), exclude=[]).get_data()
+    frob_rel = np.linalg.norm(data - recon, "fro") / np.linalg.norm(data, "fro")
+    assert frob_rel < 1e-12, f"MNE apply() round-trip Frobenius relative residual: {frob_rel:.2e}"
 
 
 """Chunked E-step should match full-batch within float64 rounding."""
