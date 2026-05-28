@@ -69,6 +69,12 @@ AMICA fits an ICA mixture model where each source has its own mixture of general
 
 Convergence uses natural gradient followed by Newton optimization (Palmer et al., 2008). Optional sample rejection (Klug et al., 2024) downweights outlier time points.
 
+## Reproducing the paper
+
+See [REPRODUCING.md](REPRODUCING.md) for the full pipeline: installation,
+dataset download, benchmark runs (local or SLURM), CSV aggregation, and
+figure-rendering commands for each of the 10 paper figures.
+
 ## Validation
 
 Numerical parity with MATLAB AMICA 1.7:
