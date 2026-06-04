@@ -374,27 +374,63 @@ python scripts/zenodo_figures/render_fig_synthetic_recovery.py \
 
 ---
 
-## Notes on `--chunk-size` and GPU memory
+## Running on a local consumer GPU (not just H100)
 
-`chunk_size="auto"` reads **system RAM** via psutil, not GPU VRAM. On a machine
-with 32 GB RAM it will pick a chunk close to full-batch and OOM on an 8 GB GPU.
+AMICA-Python runs on a normal NVIDIA laptop/desktop GPU. Two knobs make the
+difference between an OOM and a clean run:
 
-For GPU runs, compute an explicit value:
+### 1. `--dtype float32` (roughly halves memory, often much faster on consumer GPUs)
 
+```bash
+python -m amica_python.benchmark.runner --dataset ds004505 --subject 1 \
+    --backend jax --device gpu --dtype float32 --chunk-size auto \
+    --n-iter 2000 --schema-version v3
 ```
-bytes_per_sample ≈ (1 + 2×n_comp + 5×n_comp×n_mix) × 8 × 1.2
-                  = (1 + 128 + 960) × 9.6 ≈ 10,454   (64 comp, 3 mix, float64)
 
-chunk_size = gpu_budget_bytes / bytes_per_sample
+`float64` is the **reference / parity** mode and stays the default. `float32` is a
+*fast* mode: it halves buffer memory and is markedly quicker on consumer GPUs that
+have weak FP64 throughput. Validate float32 results against a float64 run before
+trusting them for science (the package's tests assert float32 W matches float64 W
+to matched mean |r| > 0.999 on a fixed seed).
+
+### 2. `--chunk-size auto` is now VRAM-aware
+
+`chunk_size="auto"` sizes the E-step chunk against the **active device's free
+VRAM** when running on GPU (via `jax.devices()[0].memory_stats()`), and against
+system RAM via psutil on CPU. It no longer OOMs on a small GPU. You can still pass
+an explicit int to cap memory yourself:
+
+| GPU VRAM | auto budget (¼ of free) | resulting chunk (64 comp, 3 mix, f64) |
+|----------|-------------------------|----------------------------------------|
+| 8 GB | ~2 GB | ~200,000 |
+| 24 GB | ~4 GB (capped) | ~400,000 |
+| 80 GB (H100) | ~4 GB (capped) | ~400,000, or full-batch if it fits |
+
+`float32` doubles each chunk for the same budget.
+
+### 3. XLA memory env vars (for tight-VRAM machines / OOM debugging)
+
+JAX preallocates ~75% of VRAM by default. On a shared or small GPU:
+
+```bash
+# Cap JAX's preallocation to leave headroom for the OS / display:
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.85
+
+# Or disable preallocation entirely while debugging an OOM (slower, less
+# fragmentation-prone):
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
 ```
 
-| GPU VRAM | budget for buffers | chunk_size (64 comp, 3 mix) |
-|----------|-------------------|------------------------------|
-| 8 GB | 4 GB | ~400,000 |
-| 8 GB | 2 GB (conservative) | ~200,000 |
-| 24 GB | 16 GB | ~1,600,000 (likely full-batch) |
+### Reading the timing fields
 
-`chunk_size="auto"` is safe on CPU-only runs where psutil reads the correct budget.
+v3 JSON now splits one-time compile from steady-state cost:
+
+- `jit_compile_s` — first-iteration XLA trace+compile. With the persistent
+  compilation cache warm (same shape/dtype re-run), this drops to ≈ 0.
+- `steady_iter_s` — median wall-time of a steady-state iteration (iters 1..N).
+
+So a run that looks "slow" end-to-end is often compile-dominated on the first
+shape; `steady_iter_s × n_iter` is the number that scales.
 
 ---
 

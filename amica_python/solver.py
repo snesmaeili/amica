@@ -271,7 +271,11 @@ def _amica_step(
         A_new = A_new / col_norms
         mu_new = mu_new * col_norms[None, :]
         beta_new = beta_new / col_norms[None, :]
-        W_new = jnp.linalg.pinv(A_new)
+        # Avoid a 2nd pinv: column-scaling A by diag(1/col_norms) row-scales its
+        # inverse by diag(col_norms). For the square invertible A maintained here,
+        # pinv == inv, so this is exact (up to FP reassociation) and skips an SVD.
+        #   inv(A · diag(1/c)) = diag(c) · inv(A)
+        W_new = W_new * col_norms[:, None]
 
     return (W_new, A_new, c_new, alpha_new, mu_new, beta_new, rho_new, gm, ll, is_good, newton_used)
 
@@ -512,7 +516,9 @@ def _amica_step_chunked(
         A_new = A_new / col_norms
         mu_new = mu_new * col_norms[None, :]
         beta_new = beta_new / col_norms[None, :]
-        W_new = jnp.linalg.pinv(A_new)
+        # Same identity as the full-batch step: row-scale the existing inverse
+        # instead of recomputing pinv. inv(A·diag(1/c)) = diag(c)·inv(A).
+        W_new = W_new * col_norms[:, None]
 
     return (
         W_new,
@@ -704,43 +710,97 @@ class AmicaResult:
         return ica
 
 
+def _gpu_memory_budget_bytes(memory_fraction: float) -> float | None:
+    """Free VRAM (bytes) × memory_fraction on the active GPU, or None.
+
+    Returns None when JAX is unavailable, no GPU device is present, or the
+    backend does not expose memory_stats() (e.g. some ROCm / older jaxlib).
+    The caller falls back to the system-RAM (psutil) path in that case.
+    """
+    try:
+        gpus = [
+            d for d in jax.devices()
+            if getattr(d, "platform", "") in ("gpu", "cuda", "rocm")
+        ]
+    except Exception:
+        return None
+    if not gpus:
+        return None
+    try:
+        stats = gpus[0].memory_stats()
+    except Exception:
+        return None
+    if not stats:
+        return None
+    limit = stats.get("bytes_limit")
+    if limit is None:
+        return None
+    in_use = int(stats.get("bytes_in_use", 0) or 0)
+    free = max(0, int(limit) - in_use)
+    return float(free) * memory_fraction
+
+
+def _active_device_is_gpu() -> bool:
+    """True when JAX's default device is a GPU."""
+    try:
+        return any(
+            getattr(d, "platform", "") in ("gpu", "cuda", "rocm")
+            for d in jax.devices()
+        )
+    except Exception:
+        return False
+
+
 def _choose_chunk_size(
     n_samples: int,
     n_components: int,
     n_mix_comps: int,
     dtype: np.dtype = np.float64,
     memory_fraction: float = 0.25,
+    device: str | None = None,
 ) -> int:
-    """Return chunk_size that keeps hot-buffer allocation within available RAM.
+    """Return chunk_size that keeps hot-buffer allocation within available memory.
 
     Hot buffers per chunk: y and g (n_comp × B each) plus per-mixture
     intermediates (~5 × n_comp × n_mix × B). Formula mirrors scott-huberty's
     choose_batch_size() adapted for our single-model NumPy/JAX buffers.
 
-    **GPU warning**: this function reads *system* RAM via psutil, not GPU VRAM.
-    When running on GPU, "auto" will likely return a chunk too large for VRAM
-    and cause OOM. Pass an explicit int instead (e.g. chunk_size=200000 for an
-    8 GB GPU with 64 components).
+    Memory budget source:
+      - On GPU (``device='gpu'`` or auto-detected), the budget is derived from
+        the active device's free VRAM via ``jax.devices()[0].memory_stats()``.
+        This prevents the OOM that a system-RAM estimate would cause on a
+        consumer GPU.
+      - On CPU (or when VRAM stats are unavailable), the budget is system RAM
+        via psutil, falling back to a 2 GiB budget when psutil is missing.
 
-    Falls back to a 2 GiB budget when psutil is not installed.
-    Returns n_samples when everything fits (caller treats as full-batch).
+    The budget is capped at 4 GiB of hot buffers either way. Returns n_samples
+    when everything fits (caller treats as full-batch).
     """
     dtype_size = np.dtype(dtype).itemsize
     bytes_per_sample = int(
         (1 + 2 * n_components + 5 * n_components * n_mix_comps) * dtype_size * 1.2
     )
 
-    try:
-        import psutil
-        avail = psutil.virtual_memory().available
-        budget = min(float(avail) * memory_fraction, 4.0 * 1024 ** 3)
-    except Exception:
-        budget = 2.0 * 1024 ** 3  # 2 GiB fallback
+    on_gpu = (device == "gpu") or (device is None and _active_device_is_gpu())
+    budget = None
+    budget_source = "system-RAM"
+    if on_gpu:
+        gpu_budget = _gpu_memory_budget_bytes(memory_fraction)
+        if gpu_budget is not None:
+            budget = min(gpu_budget, 4.0 * 1024 ** 3)
+            budget_source = "GPU-VRAM"
+    if budget is None:
+        try:
+            import psutil
+            avail = psutil.virtual_memory().available
+            budget = min(float(avail) * memory_fraction, 4.0 * 1024 ** 3)
+        except Exception:
+            budget = 2.0 * 1024 ** 3  # 2 GiB fallback
 
     max_chunk = int(budget // bytes_per_sample)
     if max_chunk < 1:
         raise MemoryError(
-            f"Cannot fit even 1 sample in {budget / 1024**3:.1f} GiB budget. "
+            f"Cannot fit even 1 sample in {budget / 1024**3:.1f} GiB {budget_source} budget. "
             f"Per-sample cost: {bytes_per_sample / 1024:.1f} KB."
         )
 
@@ -748,9 +808,9 @@ def _choose_chunk_size(
     min_chunk = min(max(8192, n_components * 32), n_samples)
     if chunk < min_chunk:
         logger.warning(
-            "Auto chunk_size %d is below recommended minimum %d. "
+            "Auto chunk_size %d (from %s budget) is below recommended minimum %d. "
             "Free memory or reduce n_components to avoid very small chunks.",
-            chunk, min_chunk,
+            chunk, budget_source, min_chunk,
         )
     return chunk
 
@@ -1002,11 +1062,16 @@ class Amica:
         update_beta_static = self.config.update_beta
         update_rho_static = self.config.update_rho
 
-        # Resolve effective chunk size once (avoids psutil call each iteration)
+        # Resolve effective chunk size once (avoids psutil call each iteration).
+        # Pass the actual compute dtype so float32 gets a correspondingly larger
+        # chunk, and let _choose_chunk_size auto-detect GPU vs CPU to size the
+        # budget against VRAM (GPU) or system RAM (CPU).
         _cfg_cs = self.config.chunk_size
         if _cfg_cs == "auto":
+            _chunk_dtype = np.float32 if self.config.dtype == "float32" else np.float64
             _eff_chunk_size = _choose_chunk_size(
-                n_samples, n_components, self.config.num_mix_comps, dtype=np.float64,
+                n_samples, n_components, self.config.num_mix_comps,
+                dtype=_chunk_dtype,
             )
             if _eff_chunk_size >= n_samples:
                 _eff_chunk_size = None  # everything fits — full batch
