@@ -233,6 +233,11 @@ def main() -> None:
     parser.add_argument("--lrate", type=float, default=0.1)
     parser.add_argument("--skip", nargs="*", default=[],
                         help="implementations to skip (e.g. --skip pyamica_torch scott_huberty_torch)")
+    parser.add_argument("--amica-device", choices=["cpu", "gpu"], default="cpu",
+                        help="Device for the amica_python_jax run. 'gpu' sets JAX_PLATFORMS=cuda "
+                             "for that runner so it actually uses the allocated GPU (the competitors "
+                             "are torch/numpy and always run on CPU). Default 'cpu' keeps a "
+                             "same-hardware comparison.")
     parser.add_argument("--dataset", choices=["mne_sample", "ds004505"], default="mne_sample",
                         help="Source data: 'mne_sample' for 60-ch dev smoke or 'ds004505' for full pipeline.")
     parser.add_argument("--subject", type=int, default=4,
@@ -286,8 +291,11 @@ def main() -> None:
     )
 
     # 2. Define the 5 runs (name, venv, runner script, env_extra)
+    # amica_python_jax uses the GPU only when --amica-device gpu; run_subprocess
+    # otherwise pins JAX_PLATFORMS=cpu, so this env_extra is what flips it to CUDA.
+    _amica_jax_env = {"JAX_PLATFORMS": "cuda"} if args.amica_device == "gpu" else None
     runs = [
-        ("amica_python_jax",     VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   None),
+        ("amica_python_jax",     VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   _amica_jax_env),
         ("amica_python_numpy",   VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   {"AMICA_NO_JAX": "1"}),
         ("pyamica_torch",        VENV_COMPETITORS,  RUNNERS_DIR / "run_pyamica.py",        None),
         ("scott_huberty_torch",  VENV_COMPETITORS,  RUNNERS_DIR / "run_scott_huberty.py",  None),
