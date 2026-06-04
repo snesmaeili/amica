@@ -432,6 +432,19 @@ v3 JSON now splits one-time compile from steady-state cost:
 So a run that looks "slow" end-to-end is often compile-dominated on the first
 shape; `steady_iter_s × n_iter` is the number that scales.
 
+### Reproducibility note (float64 trajectory)
+
+The solver skips a redundant per-iteration matrix inverse in the column-scaling
+step by using the exact identity `inv(A·diag(1/c)) = diag(c)·inv(A)` instead of
+recomputing `pinv`. This is exact in real arithmetic and passes the full parity
+suite (reconstruction `frob_rel < 1e-12`, chunked vs full-batch `rel_err < 1e-4`),
+but it is **not bit-reproducible** against older builds: the per-step difference
+sits at the float64 SVD floor (~1e-10) and the EM loop amplifies it to ~1e-4 in
+the final unmixing matrix over a few hundred iterations. This is the same class
+of non-determinism as a BLAS/LAPACK version change — both runs are valid AMICA
+fixed points at the same log-likelihood. Use a fixed seed and a pinned jaxlib if
+you need run-to-run bitwise identity.
+
 ---
 
 ## Notes on `AMICA_COMPUTE_DIPOLES`

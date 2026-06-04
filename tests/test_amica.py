@@ -537,6 +537,40 @@ def test_float32_dtype(tiny_data):
     assert res.unmixing_matrix_white_.shape == (4, 4)
 
 
+@pytest.mark.slow
+def test_float32_matches_float64_parity():
+    """float32 is a *fast* mode, not the reference: it must recover the same
+    spatial filters as float64.
+
+    This locks the local-GPU usability claim (Stage 3A: ``--dtype float32``
+    halves memory and is faster on consumer GPUs without changing the
+    solution). Uses a well-determined synthetic Laplacian mixture and the same
+    worst-case matched-cosine gate as the JAX-vs-NumPy backend parity test.
+    Slow because it runs two full 300-iteration fits.
+    """
+    from amica_python import Amica, AmicaConfig
+
+    rng = np.random.RandomState(3)
+    n_src, n_samp = 12, 8000
+    S = rng.laplace(size=(n_src, n_samp))
+    A_true = rng.randn(n_src, n_src)
+    data = (A_true @ S).astype(np.float64)
+
+    def _fit(dt):
+        cfg = AmicaConfig(max_iter=300, num_mix_comps=3, do_newton=True, dtype=dt)
+        return np.asarray(
+            Amica(cfg, random_state=3).fit(data).unmixing_matrix_white_, dtype=float
+        )
+
+    W64 = _fit("float64")
+    W32 = _fit("float32")
+
+    min_sim = _align_and_compare(W64, W32)
+    assert min_sim > 0.99, (
+        f"float32 vs float64 worst matched component cosine: {min_sim:.4f} < 0.99"
+    )
+
+
 def test_pcakeep_reduces_components(tiny_data):
     """Test pcakeep reduces the component count."""
     from amica_python import Amica, AmicaConfig
