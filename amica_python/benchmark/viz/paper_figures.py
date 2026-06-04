@@ -1952,5 +1952,106 @@ def plot_comparator_W_parity(
     return Path(out_paths[0]), caption_text
 
 
+def plot_comparator_runtime_memory(
+    bench_df: pd.DataFrame,
+    out_dir: Path,
+    captions_dir: Path,
+    stem: str = "fig12_comparator_runtime_memory",
+) -> tuple[Path | None, str]:
+    """Device-honest runtime + peak-memory comparison across implementations.
+
+    Unlike ``plot_runtime_summary`` (which assumes the AMICA-Python row is a
+    JAX-GPU run), this reads the actual ``device`` column and labels the
+    hardware truthfully. Expects ``bench_df`` with: ``method``, ``subject``,
+    ``fit_runtime_s``, ``peak_memory_gb``, ``device`` (and optionally
+    ``n_iter_actual``, ``n_components_actual``).
+    """
+    set_paper_style()
+    needed = {"method", "fit_runtime_s", "peak_memory_gb"}
+    if bench_df.empty or not needed.issubset(bench_df.columns):
+        return None, "no runtime/memory data"
+
+    df = bench_df.dropna(subset=["fit_runtime_s"]).copy()
+    if df.empty:
+        return None, "no runtime data"
+
+    methods = sorted(df["method"].unique())
+    devices = {
+        m: sorted(df.loc[df["method"] == m, "device"].dropna().unique().tolist())
+        if "device" in df.columns else []
+        for m in methods
+    }
+    all_cpu = all(set(d) <= {"cpu"} for d in devices.values() if d)
+
+    def _med_iqr(sub: pd.Series) -> tuple[float, float, float]:
+        v = sub.to_numpy(dtype=float)
+        v = v[np.isfinite(v)]
+        if v.size == 0:
+            return float("nan"), float("nan"), float("nan")
+        return float(np.median(v)), float(np.percentile(v, 25)), float(np.percentile(v, 75))
+
+    fig, (ax_rt, ax_mem) = plt.subplots(1, 2, figsize=(10.5, 4.4))
+    x = np.arange(len(methods))
+    rng = np.random.default_rng(0)
+
+    # Panel A — runtime (log)
+    for i, m in enumerate(methods):
+        med, q1, q3 = _med_iqr(df.loc[df["method"] == m, "fit_runtime_s"])
+        ax_rt.bar(i, med, width=0.62, color=_color_for(m), alpha=0.85)
+        pts = df.loc[df["method"] == m, "fit_runtime_s"].to_numpy(dtype=float)
+        ax_rt.scatter(i + rng.uniform(-0.12, 0.12, pts.size), pts, s=16, color="#333", zorder=3)
+        if np.isfinite(med):
+            ax_rt.text(i, q3, f" {med:.0f}s", ha="center", va="bottom", fontsize=7)
+    ax_rt.set_yscale("log")
+    ax_rt.set_xticks(x)
+    ax_rt.set_xticklabels([_display_method_name(m) for m in methods], rotation=20, ha="right")
+    ax_rt.set_ylabel("Fit runtime (s, log)")
+    ax_rt.set_title("A. Fit runtime", loc="left", fontweight="bold")
+
+    # Panel B — peak memory
+    for i, m in enumerate(methods):
+        med, q1, q3 = _med_iqr(df.loc[df["method"] == m, "peak_memory_gb"])
+        ax_mem.bar(i, med, width=0.62, color=_color_for(m), alpha=0.85)
+        pts = df.loc[df["method"] == m, "peak_memory_gb"].to_numpy(dtype=float)
+        ax_mem.scatter(i + rng.uniform(-0.12, 0.12, pts.size), pts, s=16, color="#333", zorder=3)
+        if np.isfinite(med):
+            ax_mem.text(i, q3, f" {med:.2f} GB", ha="center", va="bottom", fontsize=7)
+    ax_mem.set_xticks(x)
+    ax_mem.set_xticklabels([_display_method_name(m) for m in methods], rotation=20, ha="right")
+    ax_mem.set_ylabel("Peak memory (GB)")
+    ax_mem.set_title("B. Peak memory", loc="left", fontweight="bold")
+
+    n_iter = (
+        int(df["n_iter_actual"].median())
+        if "n_iter_actual" in df.columns and df["n_iter_actual"].notna().any()
+        else None
+    )
+    hw = "all on CPU (same hardware)" if all_cpu else "hardware varies by method (see caption)"
+    fig.suptitle(
+        f"Implementation runtime + memory — {hw}"
+        + (f", {n_iter} iter" if n_iter else ""),
+        fontsize=10, fontweight="bold", y=1.0,
+    )
+    fig.subplots_adjust(left=0.08, right=0.97, top=0.85, bottom=0.22, wspace=0.28)
+    out_paths = _save(fig, out_dir, stem)
+    plt.close(fig)
+
+    dev_str = "; ".join(
+        f"{_display_method_name(m)}={'/'.join(devices[m]) or 'n/a'}" for m in methods
+    )
+    caption = (
+        "Implementation runtime and peak memory. "
+        + ("All methods ran on CPU at matched settings, so this is a same-hardware "
+           "comparison. " if all_cpu else "Hardware differs by method. ")
+        + "Bars are across-subject medians; dots are individual subjects. "
+        + f"Device per method: {dev_str}. "
+        + "Note: AMICA-Python's GPU acceleration is reported separately (the "
+          "comparator orchestrator pins JAX to CPU); see the convergence runs."
+    )
+    captions_dir.mkdir(parents=True, exist_ok=True)
+    (captions_dir / f"{stem}.txt").write_text(caption, encoding="utf-8")
+    return Path(out_paths[0]), caption
+
+
 if __name__ == "__main__":
     main()

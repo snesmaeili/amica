@@ -69,8 +69,16 @@ def main() -> None:
 
     bench_df = pd.read_csv(bench_csv)
     print(f"loaded bench_df from {bench_csv} ({len(bench_df)} rows)")
-    rt_paths = pf.plot_runtime_summary(bench_df, out_dir, captions_dir)
-    print(f"runtime summary: {rt_paths}")
+    # Give the comparator methods distinct, stable colors so bars are
+    # distinguishable (METHOD_COLORS only knows the AMICA-Python display names).
+    pf.METHOD_COLORS.setdefault("amica_python_jax", "#1F4E79")
+    pf.METHOD_COLORS.setdefault("scott_huberty_torch", "#D77A00")
+    pf.METHOD_COLORS.setdefault("pyamica_torch", "#2A9D8F")
+    pf.METHOD_COLORS.setdefault("neuromechanist_numpy", "#7B3294")
+
+    # Device-honest runtime + memory figure (reads the actual device column).
+    rtm = pf.plot_comparator_runtime_memory(bench_df, out_dir, captions_dir)
+    print(f"runtime+memory figure: {rtm}")
 
     if parity_csv.exists():
         parity_df = pd.read_csv(parity_csv)
