@@ -167,6 +167,31 @@ def compute_responsibilities(
     return resp / jnp.sum(resp, axis=0, keepdims=True)
 
 
+def compute_responsibilities_with_loglik(
+    y: jnp.ndarray,
+    alpha: jnp.ndarray,
+    mu: jnp.ndarray,
+    beta: jnp.ndarray,
+    rho: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Responsibilities AND the source log-likelihood in one pass.
+
+    Returns ``(resp, log_total)`` where ``resp`` is identical to
+    ``compute_responsibilities(...)`` and ``log_total`` equals
+    ``log_generalized_gaussian_mixture(...)`` — the per-sample mixture
+    log-density. Both fall out of the same ``log_weighted_pdfs`` /
+    ``logsumexp``, so callers needing both (the chunked E-step accumulator)
+    avoid a second pass over the generalized-Gaussian log-pdf.
+    """
+    log_weighted_pdfs = jax.vmap(
+        lambda a, m, b, r: jnp.log(a) + log_generalized_gaussian(y, m, b, r)
+    )(alpha, mu, beta, rho)
+    log_total = jax.scipy.special.logsumexp(log_weighted_pdfs, axis=0)
+    resp = jnp.exp(log_weighted_pdfs - log_total) + 1e-15
+    resp = resp / jnp.sum(resp, axis=0, keepdims=True)
+    return resp, log_total
+
+
 @jax.jit
 def compute_score_function(
     y: jnp.ndarray,
