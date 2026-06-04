@@ -28,6 +28,18 @@ def main() -> None:
     _ = peak_rss_gb()
     from amica_python import Amica, AmicaConfig
 
+    # Report the device JAX actually placed work on (not a hardcoded label).
+    device = "cpu"
+    if not no_jax:
+        try:
+            import jax
+            device = "gpu" if any(
+                getattr(d, "platform", "") in ("gpu", "cuda", "rocm")
+                for d in jax.devices()
+            ) else "cpu"
+        except Exception:
+            device = "cpu"
+
     config = AmicaConfig(
         max_iter=cfg["max_iter"],
         num_mix_comps=cfg.get("n_mix", 3),
@@ -55,7 +67,7 @@ def main() -> None:
         "ll_final": float(ll_history[-1]) if ll_history else float("nan"),
         "ll_history": ll_history,
         "W": W.tolist(),
-        "device": "cpu",
+        "device": device,
         "dtype": "float64",
         "n_iter": int(result.n_iter),
     }
