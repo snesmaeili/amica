@@ -1854,5 +1854,103 @@ def main():
         print(f"  {k}: {v}")
 
 
+def plot_comparator_W_parity(
+    parity_df: pd.DataFrame,
+    out_dir: Path,
+    captions_dir: Path,
+    reference_label: str = "amica_python_jax",
+    stem: str = "fig11_comparator_W_parity",
+) -> tuple[Path | None, str]:
+    """Hungarian-matched |r| between the reference implementation and each competitor, per subject.
+
+    Expects ``parity_df`` with columns: ``subject``, ``reference``, ``compared``,
+    ``matched_mean_abs_corr`` (the output of
+    ``scripts/comparison/aggregate_comparator_pilot.py``).
+    """
+    set_paper_style()
+    if parity_df.empty or "matched_mean_abs_corr" not in parity_df.columns:
+        return None, "no parity data"
+
+    df = parity_df.copy()
+    if "reference" in df.columns:
+        df = df[df["reference"] == reference_label]
+    if df.empty:
+        return None, f"no parity rows against reference={reference_label}"
+
+    subjects = sorted(df["subject"].unique())
+    competitors = sorted(df["compared"].unique())
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.0), gridspec_kw={"width_ratios": [1.4, 1.0]})
+
+    # Panel A — grouped bars per subject
+    ax_a = axes[0]
+    width = 0.8 / max(1, len(competitors))
+    x = np.arange(len(subjects))
+    for i, comp in enumerate(competitors):
+        sub = df[df["compared"] == comp].set_index("subject")["matched_mean_abs_corr"]
+        vals = [float(sub.get(s, np.nan)) for s in subjects]
+        offsets = (i - (len(competitors) - 1) / 2.0) * width
+        ax_a.bar(
+            x + offsets, vals, width=width * 0.92,
+            color=_color_for(comp), label=_display_method_name(comp), edgecolor="white",
+        )
+        for xi, v in zip(x + offsets, vals):
+            if np.isfinite(v):
+                ax_a.text(xi, v + 0.005, f"{v:.2f}", ha="center", va="bottom", fontsize=7)
+    ax_a.axhline(0.9, color="#555555", lw=0.8, ls="--", zorder=0)
+    ax_a.set_xticks(x)
+    ax_a.set_xticklabels(subjects)
+    ax_a.set_ylim(0, 1.05)
+    ax_a.set_ylabel(f"Hungarian-matched mean |r|\n(reference: {_display_method_name(reference_label)})")
+    ax_a.set_title("A. Per-subject spatial-filter parity", loc="left", fontweight="bold")
+    ax_a.legend(frameon=False, loc="lower right", ncol=len(competitors))
+
+    # Panel B — distribution across subjects per competitor
+    ax_b = axes[1]
+    positions = np.arange(len(competitors))
+    means: list[float] = []
+    stds: list[float] = []
+    for i, comp in enumerate(competitors):
+        vals = df.loc[df["compared"] == comp, "matched_mean_abs_corr"].to_numpy(dtype=float)
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            means.append(float("nan"))
+            stds.append(0.0)
+            continue
+        means.append(float(np.mean(vals)))
+        stds.append(float(np.std(vals)))
+        jitter = np.linspace(-0.12, 0.12, vals.size)
+        ax_b.scatter(positions[i] + jitter, vals, s=24, color=_color_for(comp), alpha=0.8)
+    ax_b.bar(
+        positions, means, yerr=stds, width=0.55,
+        color=[_color_for(c) for c in competitors], alpha=0.35, capsize=3,
+    )
+    ax_b.axhline(0.9, color="#555555", lw=0.8, ls="--", zorder=0)
+    ax_b.set_xticks(positions)
+    ax_b.set_xticklabels([_display_method_name(c) for c in competitors], rotation=20, ha="right")
+    ax_b.set_ylim(0, 1.05)
+    ax_b.set_ylabel("Hungarian-matched mean |r|")
+    ax_b.set_title(f"B. Across-subject mean ± SD (n={len(subjects)})", loc="left", fontweight="bold")
+
+    fig.suptitle(
+        f"Spatial-filter parity vs {_display_method_name(reference_label)} ({len(subjects)} subjects, {len(competitors)} competitors)",
+        fontsize=11, fontweight="bold", y=1.02,
+    )
+    out_paths = _save(fig, out_dir, stem)
+    plt.close(fig)
+
+    # Captions
+    caption_text = (
+        f"Spatial-filter parity for the {len(subjects)}-subject comparator pilot. "
+        f"(A) Per-subject Hungarian-matched mean |r| between the reference "
+        f"({_display_method_name(reference_label)}) and each competitor's unmixing rows. "
+        f"(B) Across-subject mean ± SD. Dashed line at 0.9 marks the rough threshold above "
+        f"which two implementations recover effectively the same spatial filters."
+    )
+    captions_dir.mkdir(parents=True, exist_ok=True)
+    (captions_dir / f"{stem}.txt").write_text(caption_text, encoding="utf-8")
+    return Path(out_paths[0]), caption_text
+
+
 if __name__ == "__main__":
     main()
