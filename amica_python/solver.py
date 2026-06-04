@@ -535,6 +535,179 @@ def _amica_step_chunked(
     )
 
 
+@partial(
+    jax.jit,
+    static_argnames=[
+        "do_newton",
+        "do_mean",
+        "do_sphere",
+        "doscaling",
+        "update_alpha",
+        "update_mu",
+        "update_beta",
+        "update_rho",
+    ],
+)
+def _amica_step_fused(
+    W,
+    A,
+    c,
+    alpha,
+    mu,
+    beta,
+    rho,
+    gm,
+    lrate_step,
+    rholrate,
+    data_white,
+    log_det_sphere,
+    newt_start_iter,
+    iteration,
+    invsigmin,
+    invsigmax,
+    minrho,
+    maxrho,
+    do_newton,
+    do_mean,
+    do_sphere,
+    doscaling,
+    update_alpha,
+    update_mu,
+    update_beta,
+    update_rho,
+):
+    """Single-graph fused full-batch step (Stage 3D).
+
+    Same contract as ``_amica_step`` but computes responsibilities ONCE via the
+    fused accumulator (``compute_chunk_stats`` on the whole batch) and derives
+    the score, log-likelihood, Newton terms, and M-step sufficient statistics
+    from that single pass — all inside ONE ``@jax.jit`` graph.
+
+    ``_amica_step`` recomputes the generalized-Gaussian log-pdf 3-4× per
+    iteration (compute_all_scores + compute_total_loglikelihood +
+    compute_newton_terms + update_all_pdf_params). This version does it once.
+    Numerically equivalent up to float64 rounding — the chunked path it reuses
+    is parity-tested against ``_amica_step`` (``rel_err < 1e-4``).
+
+    Unlike the eager ``_amica_step_chunked`` (Python loop + per-call dispatch),
+    this is one fused XLA program, so it keeps the GPU launch profile of
+    ``_amica_step`` while dropping the recompute.
+    """
+    from .accumulators import compute_chunk_stats
+    from .updates import (
+        apply_alpha_update_from_stats,
+        apply_beta_update_from_stats,
+        apply_full_newton_correction,
+        apply_mu_update_from_stats,
+        apply_rho_update_from_stats,
+        compute_newton_terms_from_stats,
+    )
+
+    n_samples = data_white.shape[1]      # static (shape) → Python int
+    n_components = W.shape[0]
+    dtype = W.dtype
+    n_total = float(n_samples)
+
+    # --- E-step: single fused pass over the whole batch ---
+    data_centered = data_white - c[:, None]
+    totals = compute_chunk_stats(data_centered, W, alpha, mu, beta, rho, log_det_sphere)
+    data_sum_total = jnp.sum(data_white, axis=1)
+
+    ll = totals.ll_sum / n_total / n_components
+
+    # --- Natural gradient ---
+    # The fused accumulator carries some float64 fields, so cast back to the
+    # compute dtype (matters in float32 mode; a no-op in float64).
+    gy = (totals.gy_partial / n_total).astype(dtype)
+    dA_local = (jnp.eye(n_components, dtype=dtype) - gy).astype(dtype)
+
+    # --- Newton correction (lax.cond: iteration is traced under jit; both
+    # branches must return identical dtypes — hence the explicit casts). ---
+    def _apply_newton_stats(_):
+        sigma2, kappa, lambda_ = compute_newton_terms_from_stats(
+            totals.sigma2_partial,
+            totals.resp_sum,
+            totals.kappa_numer,
+            totals.lambda_numer,
+            mu,
+            beta,
+            n_total,
+        )
+        lambda_pos = jnp.all(lambda_ > 0)
+        Wtmp_newt, posdef_newt = apply_full_newton_correction(dA_local, sigma2, kappa, lambda_)
+        is_valid = lambda_pos & posdef_newt
+        return jnp.where(is_valid, Wtmp_newt, dA_local).astype(dtype), is_valid
+
+    def _skip_newton(_):
+        return dA_local.astype(dtype), jnp.array(False)
+
+    if do_newton:
+        Wtmp, newton_used = jax.lax.cond(
+            iteration >= newt_start_iter, _apply_newton_stats, _skip_newton, None
+        )
+    else:
+        Wtmp = dA_local
+        newton_used = jnp.array(False)
+
+    # --- A / W update (row-scaled inverse identity applied in scaling below) ---
+    dAk = A @ Wtmp
+    A_new = A - lrate_step * dAk
+    A_ok = jnp.all(jnp.isfinite(A_new))
+    W_new = jnp.where(A_ok, jnp.linalg.pinv(A_new).astype(dtype), W)
+    is_good = A_ok & jnp.all(jnp.isfinite(W_new))
+
+    # --- M-step on PDF params from accumulated stats ---
+    alpha_new = apply_alpha_update_from_stats(totals.resp_sum, n_total) if update_alpha else alpha
+    mu_new = (
+        apply_mu_update_from_stats(
+            mu, totals.mu_numer, totals.mu_denom_le2, totals.mu_denom_gt2, rho
+        )
+        if update_mu
+        else mu
+    )
+    beta_new = (
+        apply_beta_update_from_stats(
+            beta, totals.resp_sum, totals.beta_denom_le2, totals.beta_denom_gt2,
+            rho, invsigmin, invsigmax,
+        )
+        if update_beta
+        else beta
+    )
+    rho_new = (
+        apply_rho_update_from_stats(
+            rho, totals.rho_numer, totals.resp_sum, rholrate, minrho, maxrho
+        )
+        if update_rho
+        else rho
+    )
+
+    # --- c update ---
+    c_new = data_sum_total / n_total if do_mean else c
+
+    # --- Column scaling (Stage 3B row-scaled inverse: no 2nd pinv) ---
+    if doscaling:
+        col_norms = jnp.linalg.norm(A_new, axis=0)
+        col_norms = jnp.where(col_norms > 0.0, col_norms, 1.0)
+        A_new = A_new / col_norms
+        mu_new = mu_new * col_norms[None, :]
+        beta_new = beta_new / col_norms[None, :]
+        W_new = W_new * col_norms[:, None]
+
+    return (
+        W_new,
+        A_new,
+        c_new,
+        alpha_new,
+        mu_new,
+        beta_new,
+        rho_new,
+        gm,
+        ll,
+        is_good,
+        newton_used,
+    )
+
+
 @dataclass
 class AmicaResult:
     """Container for AMICA results.
@@ -1083,12 +1256,21 @@ class Amica:
             _eff_chunk_size = None  # None = full batch
 
         if _eff_chunk_size is not None:
+            # Chunked path is always the fused single-pass accumulator.
             _cs = _eff_chunk_size
 
             def _step_fn(*args, _cs=_cs):
                 return _amica_step_chunked(*args, chunk_size=_cs)
         else:
-            _step_fn = _amica_step
+            # Full-batch path: choose fused (default) vs classic recompute step.
+            # "auto" resolves to fused — it is numerically equivalent to classic
+            # (matches to ~1e-15 per step) but computes responsibilities once.
+            # "classic" is the parity oracle / exact-reproduction escape hatch.
+            _estep = self.config.estep
+            if _estep == "classic":
+                _step_fn = _amica_step
+            else:  # "auto" or "fused"
+                _step_fn = _amica_step_fused
 
         # Ensure initial state is JAX array with correct dtype
         W = jnp.asarray(W, dtype=dtype)

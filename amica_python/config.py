@@ -172,6 +172,15 @@ class AmicaConfig:
     #   int >= 1 — explicit chunk size in samples
     chunk_size: Union[int, Literal["auto"], None] = None
 
+    # Full-batch E-step implementation (advanced; most users should leave "auto"):
+    #   "auto"    — use the fused single-pass step (one responsibility pass per
+    #               iteration). Default, fastest.
+    #   "fused"   — force the fused single-graph step.
+    #   "classic" — force the original recompute-3x step. Kept as the parity
+    #               oracle / for exact reproduction of pre-fusion results.
+    # Only affects the full-batch path; the chunked path is always fused.
+    estep: Literal["auto", "fused", "classic"] = "auto"
+
     def __post_init__(self):
         """Validate configuration."""
         if self.num_models < 1:
@@ -193,5 +202,7 @@ class AmicaConfig:
         if self.chunk_size is not None and self.chunk_size != "auto":
             if not isinstance(self.chunk_size, int) or self.chunk_size < 1:
                 raise ValueError("chunk_size must be an int >= 1, 'auto', or None")
+        if self.estep not in ("auto", "fused", "classic"):
+            raise ValueError("estep must be 'auto', 'fused', or 'classic'")
         if self.outdir is not None:
             self.outdir = Path(self.outdir)

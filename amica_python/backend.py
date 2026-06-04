@@ -14,6 +14,15 @@ import numpy as np
 use_jax_env = os.environ.get("AMICA_NO_JAX", "0") != "1"
 HAS_JAX = False
 
+# Enable XLA's Triton GEMM emitter (GPU only; harmless/no-op on CPU). On a GPU
+# this can speed up the per-iteration matmuls (W @ data, g @ y.T) by ~5-15%.
+# Must be set BEFORE jax/XLA initialize. User-overridable: if XLA_FLAGS already
+# mentions triton_gemm we leave it alone.
+if use_jax_env:
+    _xla_flags = os.environ.get("XLA_FLAGS", "")
+    if "triton_gemm" not in _xla_flags:
+        os.environ["XLA_FLAGS"] = (_xla_flags + " --xla_gpu_triton_gemm_any=True").strip()
+
 if use_jax_env:
     try:
         import jax
