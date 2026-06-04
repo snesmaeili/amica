@@ -99,7 +99,18 @@ def main() -> None:
         default="comparator_pilot",
         help="Output filename prefix (default: comparator_pilot).",
     )
+    parser.add_argument(
+        "--impls",
+        default="amica_python_jax,scott_huberty_torch,pyamica_torch,neuromechanist_numpy",
+        help="Comma-separated implementations to include. Defaults to the 4 pilot "
+             "impls; excludes stray results (e.g. amica_python_numpy left over from "
+             "a smoke test). Pass 'all' to include every *_result.json found.",
+    )
     args = parser.parse_args()
+
+    include_impls = None
+    if args.impls and args.impls.strip().lower() != "all":
+        include_impls = {s.strip() for s in args.impls.split(",") if s.strip()}
 
     root = Path(args.root)
     subjects = None
@@ -125,6 +136,9 @@ def main() -> None:
         for jp in discover_impl_jsons(sd):
             res = load_impl_result(jp)
             impl = res.get("implementation", jp.stem)
+            if include_impls is not None and impl not in include_impls:
+                print(f"  skip {subject_tag}/{impl} (not in --impls allowlist)")
+                continue
             impl_results[impl] = res
             row = {"subject": subject_tag, "subject_id": sid}
             for k in PER_IMPL_KEYS:
