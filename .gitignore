@@ -50,6 +50,10 @@ docs/auto_examples/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Demo data artifacts: keep the .ipynb, ignore the large raw/cleaned .fif + ICA solutions
+notebooks/**/*.fif
+notebooks/amica_eegbci_results/
+
 # Environments
 .env
 .venv
