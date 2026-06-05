@@ -53,6 +53,11 @@ ParamConfig = namedtuple(
 
 @partial(
     jax.jit,
+    # Stage 3F: donate the previous-iteration state buffers (W,A,c,alpha,mu,beta,
+    # rho — positions 0-6; NOT gm, which is returned unchanged) so XLA reuses them
+    # in-place. Safe because the fit loop always accepts the returned (guarded)
+    # state, so these inputs are never read again after the call.
+    donate_argnums=(0, 1, 2, 3, 4, 5, 6),
     static_argnames=[
         "do_newton",
         "do_mean",
@@ -277,6 +282,17 @@ def _amica_step(
         #   inv(A · diag(1/c)) = diag(c) · inv(A)
         W_new = W_new * col_norms[:, None]
 
+    # Stage 3F: guard state outputs so a bad step (is_good False) returns the
+    # UNCHANGED input. Bit-exact with the caller's former discard-on-bad path,
+    # and required for donate_argnums — the caller then always accepts, so the
+    # donated input buffers are never reused on the recovery path.
+    W_new = jnp.where(is_good, W_new, W)
+    A_new = jnp.where(is_good, A_new, A)
+    c_new = jnp.where(is_good, c_new, c)
+    alpha_new = jnp.where(is_good, alpha_new, alpha)
+    mu_new = jnp.where(is_good, mu_new, mu)
+    beta_new = jnp.where(is_good, beta_new, beta)
+    rho_new = jnp.where(is_good, rho_new, rho)
     return (W_new, A_new, c_new, alpha_new, mu_new, beta_new, rho_new, gm, ll, is_good, newton_used)
 
 
@@ -520,6 +536,17 @@ def _amica_step_chunked(
         # instead of recomputing pinv. inv(A·diag(1/c)) = diag(c)·inv(A).
         W_new = W_new * col_norms[:, None]
 
+    # Stage 3F: guard state outputs (return unchanged input on a bad step) so the
+    # caller can always accept — bit-exact with the old discard-on-bad path. The
+    # chunked step is not jitted/donated, but the shared fit loop now always
+    # accepts, so its outputs must follow the same keep-old-on-bad contract.
+    W_new = jnp.where(is_good, W_new, W)
+    A_new = jnp.where(is_good, A_new, A)
+    c_new = jnp.where(is_good, c_new, c)
+    alpha_new = jnp.where(is_good, alpha_new, alpha)
+    mu_new = jnp.where(is_good, mu_new, mu)
+    beta_new = jnp.where(is_good, beta_new, beta)
+    rho_new = jnp.where(is_good, rho_new, rho)
     return (
         W_new,
         A_new,
@@ -537,6 +564,10 @@ def _amica_step_chunked(
 
 @partial(
     jax.jit,
+    # Stage 3F: donate previous-iteration state buffers (W,A,c,alpha,mu,beta,rho —
+    # positions 0-6; NOT gm) for in-place reuse. Safe: the fit loop always accepts
+    # the returned (guarded) state, so these inputs are never reused post-call.
+    donate_argnums=(0, 1, 2, 3, 4, 5, 6),
     static_argnames=[
         "do_newton",
         "do_mean",
@@ -693,6 +724,16 @@ def _amica_step_fused(
         beta_new = beta_new / col_norms[None, :]
         W_new = W_new * col_norms[:, None]
 
+    # Stage 3F: guard state outputs (return unchanged input on a bad step) so the
+    # caller can always accept — bit-exact with the old discard-on-bad path, and
+    # required for donate_argnums (donated input buffers are never reused).
+    W_new = jnp.where(is_good, W_new, W)
+    A_new = jnp.where(is_good, A_new, A)
+    c_new = jnp.where(is_good, c_new, c)
+    alpha_new = jnp.where(is_good, alpha_new, alpha)
+    mu_new = jnp.where(is_good, mu_new, mu)
+    beta_new = jnp.where(is_good, beta_new, beta)
+    rho_new = jnp.where(is_good, rho_new, rho)
     return (
         W_new,
         A_new,
@@ -1353,6 +1394,21 @@ class Amica:
                 update_rho_static,
             )
 
+            # Stage 3F: always accept the (guarded) state. On a bad step each
+            # step function now returns the UNCHANGED input, so this reproduces
+            # the former discard-on-bad behavior exactly, while letting
+            # donate_argnums reuse the step's input buffers safely.
+            W, A, c, alpha, mu, beta, rho, gm = (
+                W_new,
+                A_new,
+                c_new,
+                alpha_new,
+                mu_new,
+                beta_new,
+                rho_new,
+                gm_new,
+            )
+
             # Block until scalars are ready (synchronize for checking)
             is_good_val = bool(is_good)
             ll_val = float(ll_curr)
@@ -1368,17 +1424,6 @@ class Amica:
                 elapsed_times.append(time.perf_counter() - start_time)
                 continue
 
-            # Accept update
-            W, A, c, alpha, mu, beta, rho, gm = (
-                W_new,
-                A_new,
-                c_new,
-                alpha_new,
-                mu_new,
-                beta_new,
-                rho_new,
-                gm_new,
-            )
             LL.append(ll_val)
 
             # ========== Sample Rejection ==========
