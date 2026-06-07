@@ -60,7 +60,10 @@ def _preprocess(dataset, subject, n_components, duration_sec, resample, input_le
     projected = pca.fit_transform(data.T).T
     stds = np.std(projected, axis=1, keepdims=True)
     stds[stds == 0] = 1.0
-    return projected / stds, sfreq, ch_names
+    # also return the PCA basis so sensor-space topographies can be reconstructed
+    # downstream: sensor_mixing = components_.T @ (amica_mixing * stds)
+    return (projected / stds, sfreq, ch_names,
+            pca.components_.astype(np.float32), stds.ravel().astype(np.float32))
 
 
 def main():
@@ -88,7 +91,7 @@ def main():
 
     print(f"[mmbench] preprocessing {args.dataset} sub-{args.subject:02d} "
           f"(N={args.n_components}, dur={args.duration_sec or 'full'}, resample={args.resample})...")
-    X, sfreq, ch_names = _preprocess(
+    X, sfreq, ch_names, pca_components, pca_stds = _preprocess(
         args.dataset, args.subject, args.n_components, args.duration_sec,
         args.resample, args.input_level, args.seed,
     )
@@ -153,6 +156,7 @@ def main():
         mixing_matrix_sensor=Msens.astype(np.float32),
         mean=np.asarray(result.mean_, dtype=np.float32),
         ch_names=np.array(ch_names, dtype=object),
+        pca_components=pca_components, pca_stds=pca_stds,
         event_onsets=on, event_durations=du, event_types=ty,
     )
     print(f"[mmbench] saved {out_path}  (ll_final={float(ll_history[-1]):.4f}, "
