@@ -10,11 +10,16 @@
 # Each job sources fir_env.sh (StdEnv/2023+python/3.11+scipy-stack+cuda/12.6+cudnn
 # + .venv_fir). Underpowered (H>H_max) tasks are auto-skipped by the runner.
 #
+# Runs from an ISOLATED clone (/scratch/sesma/amica-mm) with its OWN .venv_fir,
+# so concurrent agents switching the shared /scratch/sesma/amica-python branch
+# cannot break these jobs (the clone's fir_env.sh activates the clone's venv,
+# whose editable install points at this clone's multimodel-amica code).
+#
 # Run ON fir (login-safe; only sbatch):
-#   ssh fir 'cd /scratch/sesma/amica-python/scripts/cc_benchmark && bash submit_multimodel_hsweep.sh'
+#   ssh fir 'cd /scratch/sesma/amica-mm/scripts/cc_benchmark && bash submit_multimodel_hsweep.sh'
 set -euo pipefail
 
-CCDIR=/scratch/sesma/amica-python/scripts/cc_benchmark
+CCDIR=/scratch/sesma/amica-mm/scripts/cc_benchmark
 OUT=/scratch/sesma/multimodel_bench/ds004505
 mkdir -p "$OUT" "$CCDIR/logs"
 cd "$CCDIR"
@@ -29,7 +34,7 @@ SMOKE=$(sbatch --parsable <<EOF
 #SBATCH --partition=gpubase_bygpu_b1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=24G
-#SBATCH --time=00:25:00
+#SBATCH --time=01:30:00
 #SBATCH --gres=gpu:h100:1
 #SBATCH --output=logs/%x-%j.out
 #SBATCH --error=logs/%x-%j.err
