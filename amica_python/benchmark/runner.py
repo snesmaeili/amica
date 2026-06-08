@@ -993,7 +993,7 @@ def _measure_peak_memory(backend, device, fn, /, *args, **kwargs):
 
 def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
                   n_components: int | None = None, chunk_size=None,
-                  dtype: str = "float64",
+                  dtype: str = "float64", random_state: int = 42,
                   include_artifacts=False, return_ica=False):
     """Run AMICA and record metrics.
 
@@ -1044,7 +1044,7 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
 
     mem = _measure_peak_memory(backend, device, fit_ica,
                                raw, n_components=n_components,
-                               max_iter=n_iter,
+                               max_iter=n_iter, random_state=random_state,
                                fit_params=fit_params or None)
     ica = mem["result"]
     duration = mem["duration_s"]
@@ -1157,6 +1157,8 @@ def main():
                         help="Output directory (defaults to $AMICA_RESULTS_DIR or ./results)")
     parser.add_argument("--schema-version", choices=["legacy", "v3"], default="legacy",
                         help="Write legacy flat JSON or paper-compatible v3 JSON")
+    parser.add_argument("--random-state", type=int, default=42,
+                        help="Random seed for AMICA initialisation (seed-robustness sweeps)")
     args = parser.parse_args()
 
     # Parse --chunk-size: accept int string or "auto"
@@ -1211,10 +1213,12 @@ def main():
             n_components=args.n_components,
             chunk_size=chunk_size,
             dtype=args.dtype,
+            random_state=args.random_state,
             include_artifacts=args.schema_version == "v3",
             return_ica=True,
         )
         metrics["dataset"] = args.dataset
+        metrics["random_state"] = int(args.random_state)
         metrics["subject"] = f"sub-{args.subject:02d}"
         metrics.update(input_metadata)
 
