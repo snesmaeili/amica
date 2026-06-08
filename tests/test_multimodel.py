@@ -167,9 +167,15 @@ def test_M1_step_matches_fused(iteration, newt_start):
         True, True, True, True,         # do_newton, do_mean, do_sphere, doscaling
         True, True, True, True,         # update_alpha/mu/beta/rho
     )
+    # _amica_step_fused donates its state buffers (W,A,c,alpha,mu,beta,rho;
+    # Stage 3F donate_argnums) for in-place reuse — safe in the fit loop, which
+    # always accepts the returned state, but this comparison test reuses the same
+    # params for the second (multimodel) call, so snapshot copies BEFORE the call.
+    Wm, Am, cm = jnp.array(W), jnp.array(A), jnp.array(c)
+    am, mm_, bm, rm = jnp.array(alpha), jnp.array(mu), jnp.array(beta), jnp.array(rho)
     out_s = _amica_step_fused(W, A, c, alpha, mu, beta, rho, gm, *args_common)
     out_m = _amica_step_multimodel(
-        W[None], A[None], c[None], alpha[None], mu[None], beta[None], rho[None], gm, *args_common
+        Wm[None], Am[None], cm[None], am[None], mm_[None], bm[None], rm[None], gm, *args_common
     )
 
     for name, s, m in zip(_NAMES, out_s, out_m):
