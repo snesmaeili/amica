@@ -149,6 +149,47 @@ def score_source_timecourses(S_true, S_hat, col_idx, signs):
     }
 
 
+def sir_db(S_true, S_hat, col_idx, signs, max_db=100.0):
+    """Signal-to-interference ratio (dB) per matched source.
+
+    Using the LS-scale-matched correlation r_i: ``SIR_i = -10 log10(1 - r_i^2)``.
+    Identical signals -> +``max_db`` (clipped); orthogonal -> 0 dB. Higher is
+    better. Returns (n_true,) array. (Hsu et al. 2018 source-recovery metric.)
+    """
+    sc = score_source_timecourses(S_true, S_hat, col_idx, signs)
+    r2 = np.clip(sc["r_source_abs"] ** 2, 0.0, 1.0 - 1e-12)
+    return np.clip(-10.0 * np.log10(1.0 - r2), None, max_db)
+
+
+def symmetric_kl_pdf(S_true, S_hat, col_idx, signs, n_bins=100, clip_sd=5.0, eps=1e-6):
+    """Symmetric KL divergence between true and recovered source PDFs per pair.
+
+    Each matched/sign-flipped pair is z-scored, binned on a shared +/-clip_sd
+    grid, and scored as ``SKL = sum p log(p/q) + sum q log(q/p)`` with Laplace
+    smoothing. Low = recovered density matches truth. Returns (n_true,) array.
+    """
+    S_true = np.asarray(S_true, dtype=np.float64)
+    S_hat = np.asarray(S_hat, dtype=np.float64)
+    n_true = S_true.shape[0]
+    picked = S_hat[col_idx] * signs[:, None]
+    grid = np.linspace(-clip_sd, clip_sd, n_bins + 1)
+    out = np.full(n_true, np.nan)
+    for i in range(n_true):
+        a = S_true[i] - S_true[i].mean()
+        b = picked[i] - picked[i].mean()
+        sa, sb = a.std(), b.std()
+        if sa <= 0 or sb <= 0:
+            continue
+        pa, _ = np.histogram(a / sa, bins=grid)
+        pb, _ = np.histogram(b / sb, bins=grid)
+        p = pa + eps
+        p = p / p.sum()
+        q = pb + eps
+        q = q / q.sum()
+        out[i] = float(np.sum(p * np.log(p / q)) + np.sum(q * np.log(q / p)))
+    return out
+
+
 def amari_index(W_hat, A_true):
     """Normalised Amari index of P = W_hat @ A_true.
 

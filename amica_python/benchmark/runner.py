@@ -520,6 +520,29 @@ def load_data(dataset_name, subject_id, task=None, input_level="auto", return_me
         }
         metadata.update(ds004505_event_metadata(raw, bids_root, subject_id))
         metadata.update(select_ds004505_scalp_eeg(raw, set_path=target_set_file))
+
+    elif dataset_name == "ds004504":
+        # Eyes-closed resting-state EEG (Miltiadous et al. 2023, MDPI Data 8:95)
+        # — the STATIONARY comparator. 19-ch 10-20, 500 Hz. Healthy-control (CN)
+        # subjects are sub-037..sub-065. 3-digit BIDS ids.
+        default_root = "/scratch/sesma/datasets/ds004504"
+        bids_root = Path(os.environ.get("BIDS_ROOT_DS4504", default_root))
+        if not bids_root.exists():
+            raise FileNotFoundError(f"ds004504 not found at {bids_root}.")
+        sub = f"sub-{subject_id:03d}"
+        set_file = bids_root / sub / "eeg" / f"{sub}_task-eyesclosed_eeg.set"
+        if not set_file.exists():
+            raise FileNotFoundError(f"ds004504 .set not found: {set_file}")
+        print(f"Loading resting-state file: {set_file}", file=sys.stderr)
+        raw = mne.io.read_raw_eeglab(set_file, preload=False)
+        raw.pick_types(eeg=True, exclude="bads")
+        metadata = {
+            "input_file": str(set_file),
+            "input_level": "ds004504_eyesclosed",
+            "loaded_sfreq": float(raw.info["sfreq"]),
+            "n_loaded_channels": int(len(raw.ch_names)),
+            "n_amica_input_channels": int(len(raw.ch_names)),
+        }
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
