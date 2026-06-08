@@ -19,8 +19,8 @@ from __future__ import annotations
 from typing import NamedTuple
 
 from .backend import jax, jnp
-from .likelihood import compute_log_det_W, compute_source_loglikelihood
-from .pdf import compute_responsibilities
+from .likelihood import compute_log_det_W
+from .pdf import compute_responsibilities_with_loglik
 
 
 class ChunkStats(NamedTuple):
@@ -87,8 +87,14 @@ def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho):
     beta_i = beta[:, i]
     rho_i = rho[:, i]
 
-    # Responsibilities for this component (n_mix, n_chunk)
-    resp = compute_responsibilities(y_i, alpha_i, mu_i, beta_i, rho_i)
+    # Single fused pass: responsibilities (n_mix, n_chunk) AND the per-sample
+    # source log-likelihood (n_chunk,). The score g and the LL are derived from
+    # these same quantities below, so this component is touched exactly once per
+    # chunk per iteration (was: 1 pass here + 1 in compute_all_scores + 1 in
+    # compute_source_loglikelihood).
+    resp, source_ll_i = compute_responsibilities_with_loglik(
+        y_i, alpha_i, mu_i, beta_i, rho_i
+    )
 
     n_mix = alpha_i.shape[0]
 
@@ -104,6 +110,10 @@ def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho):
         fp = r * sign_y * jnp.power(abs_y, r - 1.0)
 
         ufp = u * fp
+
+        # Score contribution of this mixture to component i:
+        #   g_i = Σ_j β_j · u_j · fp_j  (matches compute_weighted_score exactly)
+        g_contrib = b * ufp  # (n_chunk,)
 
         # mu numer/denom
         mu_n = jnp.sum(ufp)
@@ -128,10 +138,13 @@ def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho):
         lambda_tmp = fp * y_scaled - 1.0
         lambda_n = jnp.sum(u * lambda_tmp * lambda_tmp)
 
-        return (u_sum, mu_n, mu_d_le2, mu_d_gt2, beta_d_le2, beta_d_gt2, rho_n, kappa_n, lambda_n)
+        return (u_sum, mu_n, mu_d_le2, mu_d_gt2, beta_d_le2, beta_d_gt2,
+                rho_n, kappa_n, lambda_n, g_contrib)
 
     outs = jax.vmap(per_mix)(jnp.arange(n_mix))
-    return outs  # tuple of 9 arrays, each (n_mix,)
+    stats9 = outs[:9]            # tuple of 9 arrays, each (n_mix,)
+    g_i = jnp.sum(outs[9], axis=0)  # (n_chunk,) score for component i
+    return stats9, g_i, source_ll_i
 
 
 @jax.jit
@@ -174,32 +187,31 @@ def compute_chunk_stats(
     # Sources
     y = jnp.dot(W, data_chunk)  # (n_comp, n_chunk)
 
-    # Compute score function g = sum_j beta_j * resp_j * fp_j per component
-    # Reuse the existing compute_all_scores to keep score semantics identical.
-    from .pdf import compute_all_scores
-
-    g = compute_all_scores(y, alpha, mu, beta, rho)  # (n_comp, n_chunk)
-
-    # Natural-gradient numerator (sum over time — NOT mean yet)
-    gy_partial = jnp.dot(g, y.T)  # (n_comp, n_comp)
-
     # sigma2 partial (sum of y^2 over time)
     sigma2_partial = jnp.sum(y * y, axis=1)  # (n_comp,)
 
     # data sum for c update (placeholder; true data_white sum is tracked in solver.py)
     data_sum = jnp.sum(data_chunk, axis=1)
 
-    # Per-component, per-mixture sufficient statistics
-    comp_outs = jax.vmap(lambda i: _chunk_stats_one_component(i, y, alpha, mu, beta, rho))(
-        jnp.arange(n_comp)
-    )
-    # Transpose sufficient statistics from (n_comp, n_mix) to (n_mix, n_comp)
+    # Single fused E-step pass: per-component (M-step stats, score g_i, source LL).
+    # The score and the source log-likelihood are derived from the SAME
+    # responsibilities used for the M-step stats, so the generalized-Gaussian
+    # log-pdf is evaluated once per chunk (previously: compute_all_scores +
+    # compute_source_loglikelihood each re-evaluated it).
+    stats9, g, source_ll_per_comp = jax.vmap(
+        lambda i: _chunk_stats_one_component(i, y, alpha, mu, beta, rho)
+    )(jnp.arange(n_comp))
+    # stats9: tuple of 9 arrays each (n_comp, n_mix) -> transpose to (n_mix, n_comp)
     (u_sum, mu_n, mu_d_le2, mu_d_gt2, beta_d_le2, beta_d_gt2, rho_n, kappa_n, lambda_n) = [
-        a.T for a in comp_outs
+        a.T for a in stats9
     ]
+    # g: (n_comp, n_chunk) score; source_ll_per_comp: (n_comp, n_chunk)
 
-    # Per-sample log-likelihood sum
-    source_ll = compute_source_loglikelihood(y, alpha, mu, beta, rho)  # (n_chunk,)
+    # Natural-gradient numerator (sum over time — NOT mean yet)
+    gy_partial = jnp.dot(g, y.T)  # (n_comp, n_comp)
+
+    # Per-sample log-likelihood sum (sum source LL across components)
+    source_ll = jnp.sum(source_ll_per_comp, axis=0)  # (n_chunk,)
     log_det_W = compute_log_det_W(W)
     ll_per_sample = source_ll + log_det_W + log_det_sphere
     ll_sum = jnp.sum(ll_per_sample)

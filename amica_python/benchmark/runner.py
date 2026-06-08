@@ -520,6 +520,29 @@ def load_data(dataset_name, subject_id, task=None, input_level="auto", return_me
         }
         metadata.update(ds004505_event_metadata(raw, bids_root, subject_id))
         metadata.update(select_ds004505_scalp_eeg(raw, set_path=target_set_file))
+
+    elif dataset_name == "ds004504":
+        # Eyes-closed resting-state EEG (Miltiadous et al. 2023, MDPI Data 8:95)
+        # — the STATIONARY comparator. 19-ch 10-20, 500 Hz. Healthy-control (CN)
+        # subjects are sub-037..sub-065. 3-digit BIDS ids.
+        default_root = "/scratch/sesma/datasets/ds004504"
+        bids_root = Path(os.environ.get("BIDS_ROOT_DS4504", default_root))
+        if not bids_root.exists():
+            raise FileNotFoundError(f"ds004504 not found at {bids_root}.")
+        sub = f"sub-{subject_id:03d}"
+        set_file = bids_root / sub / "eeg" / f"{sub}_task-eyesclosed_eeg.set"
+        if not set_file.exists():
+            raise FileNotFoundError(f"ds004504 .set not found: {set_file}")
+        print(f"Loading resting-state file: {set_file}", file=sys.stderr)
+        raw = mne.io.read_raw_eeglab(set_file, preload=False)
+        raw.pick_types(eeg=True, exclude="bads")
+        metadata = {
+            "input_file": str(set_file),
+            "input_level": "ds004504_eyesclosed",
+            "loaded_sfreq": float(raw.info["sfreq"]),
+            "n_loaded_channels": int(len(raw.ch_names)),
+            "n_amica_input_channels": int(len(raw.ch_names)),
+        }
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
@@ -970,6 +993,7 @@ def _measure_peak_memory(backend, device, fn, /, *args, **kwargs):
 
 def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
                   n_components: int | None = None, chunk_size=None,
+                  dtype: str = "float64",
                   include_artifacts=False, return_ica=False):
     """Run AMICA and record metrics.
 
@@ -980,8 +1004,12 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
         smaller value (e.g. 32) to reduce GPU VRAM use on consumer GPUs.
     chunk_size : int | "auto" | None
         E-step chunk size in samples. None = full-batch (default). "auto" =
-        pick via psutil (system RAM; does not account for GPU VRAM). An explicit
-        int (e.g. 10000) is required to cap GPU memory use.
+        pick via VRAM on GPU / system RAM on CPU. An explicit int (e.g. 10000)
+        also caps GPU memory use.
+    dtype : {"float64", "float32"}
+        Compute precision. "float64" (default) is the reference/parity mode.
+        "float32" roughly halves memory and can be markedly faster on consumer
+        GPUs; it is a *fast* mode, not the reference — validate against float64.
 
     If return_ica=True, returns (metrics, ica) so the caller can persist an
     `ica.fif` sidecar next to the JSON for downstream notebook/figure use.
@@ -1011,6 +1039,8 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
     fit_params = {}
     if chunk_size is not None:
         fit_params["chunk_size"] = chunk_size
+    if dtype and dtype != "float64":
+        fit_params["dtype"] = dtype
 
     mem = _measure_peak_memory(backend, device, fit_ica,
                                raw, n_components=n_components,
@@ -1027,6 +1057,7 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
         "method": "amica",
         "backend": backend,
         "device": device,
+        "dtype": dtype,
         "runtime_s": float(duration),
         "time": float(duration),
         "n_iter": n_iter_actual,
@@ -1051,6 +1082,25 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
         "hostname": platform.node(),
         "slurm_job_id": os.environ.get("SLURM_JOB_ID", "local"),
     }
+
+    # Separate JIT-compile cost (first iteration) from steady per-iteration cost.
+    # AmicaResult.iteration_times[0] includes XLA trace+compile on the JAX path;
+    # iterations 1..N are steady-state. With the persistent cache warm, a repeat
+    # run of the same shape should show jit_compile_s ≈ 0.
+    _iter_times = np.asarray(
+        getattr(amica_result_obj, "iteration_times", []), dtype=float
+    )
+    if _iter_times.size >= 2:
+        steady_iter_s = float(np.median(_iter_times[1:]))
+        jit_compile_s = float(max(0.0, _iter_times[0] - steady_iter_s))
+    elif _iter_times.size == 1:
+        steady_iter_s = float(_iter_times[0])
+        jit_compile_s = 0.0
+    else:
+        steady_iter_s = None
+        jit_compile_s = None
+    metrics["jit_compile_s"] = jit_compile_s
+    metrics["steady_iter_s"] = steady_iter_s
 
     # Try ICLabel if available. Wrap broadly so any failure (missing onnxruntime,
     # missing channel positions, etc.) doesn't kill the run after a successful fit.
@@ -1090,8 +1140,12 @@ def main():
                              "Reduce to lower GPU VRAM use on consumer GPUs.")
     parser.add_argument("--chunk-size", default=None,
                         help="E-step chunk size in samples: int, 'auto', or omit for "
-                             "full-batch. Use e.g. 10000 to cap GPU memory on datasets "
-                             "with many samples.")
+                             "full-batch. 'auto' sizes against GPU VRAM on gpu / system "
+                             "RAM on cpu. Use e.g. 10000 to cap GPU memory explicitly.")
+    parser.add_argument("--dtype", choices=["float64", "float32"], default="float64",
+                        help="Compute precision. float64 (default) is the reference/"
+                             "parity mode; float32 is a faster, lower-memory mode for "
+                             "consumer GPUs (validate against float64, not a reference).")
     parser.add_argument("--duration-sec", type=float, default=None,
                         help="Crop to the first N seconds before filtering/fitting")
     parser.add_argument("--resample", type=float, default=None,
@@ -1156,6 +1210,7 @@ def main():
             n_iter=args.n_iter,
             n_components=args.n_components,
             chunk_size=chunk_size,
+            dtype=args.dtype,
             include_artifacts=args.schema_version == "v3",
             return_ica=True,
         )

@@ -63,6 +63,23 @@ K, W, Y = amica(X)
 K, W, Y, n_iter = amica(X, return_n_iter=True)
 ```
 
+### Running on a cluster
+
+To fit AMICA on your own data on an HPC cluster (one GPU per fit is enough), use
+the generic Slurm template in [`examples/cluster/`](examples/cluster/) — adapt the
+account/modules/venv and point it at your recording. Details in
+[`examples/cluster/README.md`](examples/cluster/README.md).
+
+## Repository layout
+
+```
+amica_python/   the package: core algorithm, JAX/NumPy backends, MNE integration
+examples/       runnable usage examples (local API + cluster template)
+tests/          unit and numerical-parity tests
+docs/           Sphinx documentation
+benchmark/      research/validation scripts behind the paper (not needed to use the package)
+```
+
 ## Background
 
 AMICA fits an ICA mixture model where each source has its own mixture of generalized Gaussians with adaptive shape (rho), scale (beta), and location (mu). The shape parameter interpolates between Laplacian (rho=1, super-Gaussian) and Gaussian (rho=2), so it adapts to whatever the data actually looks like rather than assuming a fixed distribution.

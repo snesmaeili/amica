@@ -41,6 +41,9 @@ BENCHMARK_RESULTS_COLUMNS = [
     "converged_before_cap",
     "fit_runtime_s",
     "total_runtime_s",
+    "jit_compile_s",      # first-iteration XLA trace+compile cost (JAX); 0 when cache warm
+    "steady_iter_s",      # median wall-time per steady-state iteration (iters 1..N)
+    "dtype",              # 'float64' (reference) | 'float32' (fast/local-GPU mode)
     "peak_memory_gb",
     "peak_cpu_ram_gb",
     "peak_vram_gb",

@@ -53,6 +53,11 @@ ParamConfig = namedtuple(
 
 @partial(
     jax.jit,
+    # Stage 3F: donate the previous-iteration state buffers (W,A,c,alpha,mu,beta,
+    # rho — positions 0-6; NOT gm, which is returned unchanged) so XLA reuses them
+    # in-place. Safe because the fit loop always accepts the returned (guarded)
+    # state, so these inputs are never read again after the call.
+    donate_argnums=(0, 1, 2, 3, 4, 5, 6),
     static_argnames=[
         "do_newton",
         "do_mean",
@@ -271,8 +276,23 @@ def _amica_step(
         A_new = A_new / col_norms
         mu_new = mu_new * col_norms[None, :]
         beta_new = beta_new / col_norms[None, :]
-        W_new = jnp.linalg.pinv(A_new)
+        # Avoid a 2nd pinv: column-scaling A by diag(1/col_norms) row-scales its
+        # inverse by diag(col_norms). For the square invertible A maintained here,
+        # pinv == inv, so this is exact (up to FP reassociation) and skips an SVD.
+        #   inv(A · diag(1/c)) = diag(c) · inv(A)
+        W_new = W_new * col_norms[:, None]
 
+    # Stage 3F: guard state outputs so a bad step (is_good False) returns the
+    # UNCHANGED input. Bit-exact with the caller's former discard-on-bad path,
+    # and required for donate_argnums — the caller then always accepts, so the
+    # donated input buffers are never reused on the recovery path.
+    W_new = jnp.where(is_good, W_new, W)
+    A_new = jnp.where(is_good, A_new, A)
+    c_new = jnp.where(is_good, c_new, c)
+    alpha_new = jnp.where(is_good, alpha_new, alpha)
+    mu_new = jnp.where(is_good, mu_new, mu)
+    beta_new = jnp.where(is_good, beta_new, beta)
+    rho_new = jnp.where(is_good, rho_new, rho)
     return (W_new, A_new, c_new, alpha_new, mu_new, beta_new, rho_new, gm, ll, is_good, newton_used)
 
 
@@ -512,8 +532,21 @@ def _amica_step_chunked(
         A_new = A_new / col_norms
         mu_new = mu_new * col_norms[None, :]
         beta_new = beta_new / col_norms[None, :]
-        W_new = jnp.linalg.pinv(A_new)
+        # Same identity as the full-batch step: row-scale the existing inverse
+        # instead of recomputing pinv. inv(A·diag(1/c)) = diag(c)·inv(A).
+        W_new = W_new * col_norms[:, None]
 
+    # Stage 3F: guard state outputs (return unchanged input on a bad step) so the
+    # caller can always accept — bit-exact with the old discard-on-bad path. The
+    # chunked step is not jitted/donated, but the shared fit loop now always
+    # accepts, so its outputs must follow the same keep-old-on-bad contract.
+    W_new = jnp.where(is_good, W_new, W)
+    A_new = jnp.where(is_good, A_new, A)
+    c_new = jnp.where(is_good, c_new, c)
+    alpha_new = jnp.where(is_good, alpha_new, alpha)
+    mu_new = jnp.where(is_good, mu_new, mu)
+    beta_new = jnp.where(is_good, beta_new, beta)
+    rho_new = jnp.where(is_good, rho_new, rho)
     return (
         W_new,
         A_new,
@@ -526,6 +559,268 @@ def _amica_step_chunked(
         ll,
         is_good,
         newton_used,
+    )
+
+
+@partial(
+    jax.jit,
+    # Stage 3F: donate previous-iteration state buffers (W,A,c,alpha,mu,beta,rho —
+    # positions 0-6; NOT gm) for in-place reuse. Safe: the fit loop always accepts
+    # the returned (guarded) state, so these inputs are never reused post-call.
+    donate_argnums=(0, 1, 2, 3, 4, 5, 6),
+    static_argnames=[
+        "do_newton",
+        "do_mean",
+        "do_sphere",
+        "doscaling",
+        "update_alpha",
+        "update_mu",
+        "update_beta",
+        "update_rho",
+    ],
+)
+def _amica_step_fused(
+    W,
+    A,
+    c,
+    alpha,
+    mu,
+    beta,
+    rho,
+    gm,
+    lrate_step,
+    rholrate,
+    data_white,
+    log_det_sphere,
+    newt_start_iter,
+    iteration,
+    invsigmin,
+    invsigmax,
+    minrho,
+    maxrho,
+    do_newton,
+    do_mean,
+    do_sphere,
+    doscaling,
+    update_alpha,
+    update_mu,
+    update_beta,
+    update_rho,
+):
+    """Single-graph fused full-batch step (Stage 3D).
+
+    Same contract as ``_amica_step`` but computes responsibilities ONCE via the
+    fused accumulator (``compute_chunk_stats`` on the whole batch) and derives
+    the score, log-likelihood, Newton terms, and M-step sufficient statistics
+    from that single pass — all inside ONE ``@jax.jit`` graph.
+
+    ``_amica_step`` recomputes the generalized-Gaussian log-pdf 3-4× per
+    iteration (compute_all_scores + compute_total_loglikelihood +
+    compute_newton_terms + update_all_pdf_params). This version does it once.
+    Numerically equivalent up to float64 rounding — the chunked path it reuses
+    is parity-tested against ``_amica_step`` (``rel_err < 1e-4``).
+
+    Unlike the eager ``_amica_step_chunked`` (Python loop + per-call dispatch),
+    this is one fused XLA program, so it keeps the GPU launch profile of
+    ``_amica_step`` while dropping the recompute.
+    """
+    from .accumulators import compute_chunk_stats
+    from .updates import (
+        apply_alpha_update_from_stats,
+        apply_beta_update_from_stats,
+        apply_full_newton_correction,
+        apply_mu_update_from_stats,
+        apply_rho_update_from_stats,
+        compute_newton_terms_from_stats,
+    )
+
+    n_samples = data_white.shape[1]      # static (shape) → Python int
+    n_components = W.shape[0]
+    dtype = W.dtype
+    n_total = float(n_samples)
+
+    # --- E-step: single fused pass over the whole batch ---
+    data_centered = data_white - c[:, None]
+    totals = compute_chunk_stats(data_centered, W, alpha, mu, beta, rho, log_det_sphere)
+    data_sum_total = jnp.sum(data_white, axis=1)
+
+    ll = totals.ll_sum / n_total / n_components
+
+    # --- Natural gradient ---
+    # The fused accumulator carries some float64 fields, so cast back to the
+    # compute dtype (matters in float32 mode; a no-op in float64).
+    gy = (totals.gy_partial / n_total).astype(dtype)
+    dA_local = (jnp.eye(n_components, dtype=dtype) - gy).astype(dtype)
+
+    # --- Newton correction (lax.cond: iteration is traced under jit; both
+    # branches must return identical dtypes — hence the explicit casts). ---
+    def _apply_newton_stats(_):
+        sigma2, kappa, lambda_ = compute_newton_terms_from_stats(
+            totals.sigma2_partial,
+            totals.resp_sum,
+            totals.kappa_numer,
+            totals.lambda_numer,
+            mu,
+            beta,
+            n_total,
+        )
+        lambda_pos = jnp.all(lambda_ > 0)
+        Wtmp_newt, posdef_newt = apply_full_newton_correction(dA_local, sigma2, kappa, lambda_)
+        is_valid = lambda_pos & posdef_newt
+        return jnp.where(is_valid, Wtmp_newt, dA_local).astype(dtype), is_valid
+
+    def _skip_newton(_):
+        return dA_local.astype(dtype), jnp.array(False)
+
+    if do_newton:
+        Wtmp, newton_used = jax.lax.cond(
+            iteration >= newt_start_iter, _apply_newton_stats, _skip_newton, None
+        )
+    else:
+        Wtmp = dA_local
+        newton_used = jnp.array(False)
+
+    # --- A / W update (row-scaled inverse identity applied in scaling below) ---
+    dAk = A @ Wtmp
+    A_new = A - lrate_step * dAk
+    A_ok = jnp.all(jnp.isfinite(A_new))
+    W_new = jnp.where(A_ok, jnp.linalg.pinv(A_new).astype(dtype), W)
+    is_good = A_ok & jnp.all(jnp.isfinite(W_new))
+
+    # --- M-step on PDF params from accumulated stats ---
+    alpha_new = apply_alpha_update_from_stats(totals.resp_sum, n_total) if update_alpha else alpha
+    mu_new = (
+        apply_mu_update_from_stats(
+            mu, totals.mu_numer, totals.mu_denom_le2, totals.mu_denom_gt2, rho
+        )
+        if update_mu
+        else mu
+    )
+    beta_new = (
+        apply_beta_update_from_stats(
+            beta, totals.resp_sum, totals.beta_denom_le2, totals.beta_denom_gt2,
+            rho, invsigmin, invsigmax,
+        )
+        if update_beta
+        else beta
+    )
+    rho_new = (
+        apply_rho_update_from_stats(
+            rho, totals.rho_numer, totals.resp_sum, rholrate, minrho, maxrho
+        )
+        if update_rho
+        else rho
+    )
+
+    # --- c update ---
+    c_new = data_sum_total / n_total if do_mean else c
+
+    # --- Column scaling (Stage 3B row-scaled inverse: no 2nd pinv) ---
+    if doscaling:
+        col_norms = jnp.linalg.norm(A_new, axis=0)
+        col_norms = jnp.where(col_norms > 0.0, col_norms, 1.0)
+        A_new = A_new / col_norms
+        mu_new = mu_new * col_norms[None, :]
+        beta_new = beta_new / col_norms[None, :]
+        W_new = W_new * col_norms[:, None]
+
+    # Stage 3F: guard state outputs (return unchanged input on a bad step) so the
+    # caller can always accept — bit-exact with the old discard-on-bad path, and
+    # required for donate_argnums (donated input buffers are never reused).
+    W_new = jnp.where(is_good, W_new, W)
+    A_new = jnp.where(is_good, A_new, A)
+    c_new = jnp.where(is_good, c_new, c)
+    alpha_new = jnp.where(is_good, alpha_new, alpha)
+    mu_new = jnp.where(is_good, mu_new, mu)
+    beta_new = jnp.where(is_good, beta_new, beta)
+    rho_new = jnp.where(is_good, rho_new, rho)
+    return (
+        W_new,
+        A_new,
+        c_new,
+        alpha_new,
+        mu_new,
+        beta_new,
+        rho_new,
+        gm,
+        ll,
+        is_good,
+        newton_used,
+    )
+
+
+def _amica_step_multimodel(
+    W, A, c, alpha, mu, beta, rho, gm,
+    lrate_step, rholrate, data_white, log_det_sphere,
+    newt_start_iter, iteration, invsigmin, invsigmax, minrho, maxrho,
+    do_newton, do_mean, do_sphere, doscaling,
+    update_alpha, update_mu, update_beta, update_rho,
+):
+    """Full-batch multi-model step (num_models > 1).
+
+    Same call contract / return tuple as ``_amica_step_fused``, but the params
+    carry a leading model axis and the E/M-step are the v-weighted multimodel
+    versions. ``do_sphere`` and the ``update_*`` flags are accepted for signature
+    compatibility but not used (multimodel always updates the pdf params;
+    sphering is handled in preprocessing).
+    """
+    from .multimodel import compute_chunk_stats_mm, m_step_mm
+
+    totals = compute_chunk_stats_mm(
+        data_white, W, c, alpha, mu, beta, rho, gm, log_det_sphere
+    )
+    n_total = totals.n_chunk
+    return m_step_mm(
+        totals, W, A, c, alpha, mu, beta, rho, gm, n_total,
+        lrate_step, rholrate, iteration, newt_start_iter,
+        invsigmin, invsigmax, minrho, maxrho,
+        do_newton, do_mean, doscaling,
+    )
+
+
+def _amica_step_multimodel_chunked(
+    W, A, c, alpha, mu, beta, rho, gm,
+    lrate_step, rholrate, data_white, log_det_sphere,
+    newt_start_iter, iteration, invsigmin, invsigmax, minrho, maxrho,
+    do_newton, do_mean, do_sphere, doscaling,
+    update_alpha, update_mu, update_beta, update_rho,
+    chunk_size,
+):
+    """Chunked multi-model step: Python time-loop + one M-step on the totals.
+
+    Mirrors ``_amica_step_chunked``; each per-chunk ``compute_chunk_stats_mm``
+    is jitted, the outer loop is plain Python.
+    """
+    from .multimodel import (
+        add_stats_mm,
+        compute_chunk_stats_mm,
+        m_step_mm,
+        zero_stats_mm,
+    )
+
+    n_models = W.shape[0]
+    n_comp = W.shape[1]
+    n_mix = alpha.shape[1]
+    n_samples = data_white.shape[1]
+
+    totals = zero_stats_mm(n_models, n_comp, n_mix, dtype=W.dtype)
+    start = 0
+    while start < n_samples:
+        end = min(start + chunk_size, n_samples)
+        totals = add_stats_mm(
+            totals,
+            compute_chunk_stats_mm(
+                data_white[:, start:end], W, c, alpha, mu, beta, rho, gm, log_det_sphere
+            ),
+        )
+        start = end
+
+    n_total = jnp.asarray(n_samples, dtype=W.dtype)
+    return m_step_mm(
+        totals, W, A, c, alpha, mu, beta, rho, gm, n_total,
+        lrate_step, rholrate, iteration, newt_start_iter,
+        invsigmin, invsigmax, minrho, maxrho,
+        do_newton, do_mean, doscaling,
     )
 
 
@@ -605,6 +900,9 @@ class AmicaResult:
     elapsed_times: np.ndarray = field(default_factory=lambda: np.array([]))
     converged: bool = False
     data_scale: float = 1.0
+    # Multi-model only (num_models > 1): the model-posterior time-course
+    # p(h|t), shape (n_models, n_samples). None for single-model fits.
+    model_posteriors_: np.ndarray | None = None
 
     def to_mne(self, info):
         """Convert results to MNE ICA object.
@@ -704,43 +1002,97 @@ class AmicaResult:
         return ica
 
 
+def _gpu_memory_budget_bytes(memory_fraction: float) -> float | None:
+    """Free VRAM (bytes) × memory_fraction on the active GPU, or None.
+
+    Returns None when JAX is unavailable, no GPU device is present, or the
+    backend does not expose memory_stats() (e.g. some ROCm / older jaxlib).
+    The caller falls back to the system-RAM (psutil) path in that case.
+    """
+    try:
+        gpus = [
+            d for d in jax.devices()
+            if getattr(d, "platform", "") in ("gpu", "cuda", "rocm")
+        ]
+    except Exception:
+        return None
+    if not gpus:
+        return None
+    try:
+        stats = gpus[0].memory_stats()
+    except Exception:
+        return None
+    if not stats:
+        return None
+    limit = stats.get("bytes_limit")
+    if limit is None:
+        return None
+    in_use = int(stats.get("bytes_in_use", 0) or 0)
+    free = max(0, int(limit) - in_use)
+    return float(free) * memory_fraction
+
+
+def _active_device_is_gpu() -> bool:
+    """True when JAX's default device is a GPU."""
+    try:
+        return any(
+            getattr(d, "platform", "") in ("gpu", "cuda", "rocm")
+            for d in jax.devices()
+        )
+    except Exception:
+        return False
+
+
 def _choose_chunk_size(
     n_samples: int,
     n_components: int,
     n_mix_comps: int,
     dtype: np.dtype = np.float64,
     memory_fraction: float = 0.25,
+    device: str | None = None,
 ) -> int:
-    """Return chunk_size that keeps hot-buffer allocation within available RAM.
+    """Return chunk_size that keeps hot-buffer allocation within available memory.
 
     Hot buffers per chunk: y and g (n_comp × B each) plus per-mixture
     intermediates (~5 × n_comp × n_mix × B). Formula mirrors scott-huberty's
     choose_batch_size() adapted for our single-model NumPy/JAX buffers.
 
-    **GPU warning**: this function reads *system* RAM via psutil, not GPU VRAM.
-    When running on GPU, "auto" will likely return a chunk too large for VRAM
-    and cause OOM. Pass an explicit int instead (e.g. chunk_size=200000 for an
-    8 GB GPU with 64 components).
+    Memory budget source:
+      - On GPU (``device='gpu'`` or auto-detected), the budget is derived from
+        the active device's free VRAM via ``jax.devices()[0].memory_stats()``.
+        This prevents the OOM that a system-RAM estimate would cause on a
+        consumer GPU.
+      - On CPU (or when VRAM stats are unavailable), the budget is system RAM
+        via psutil, falling back to a 2 GiB budget when psutil is missing.
 
-    Falls back to a 2 GiB budget when psutil is not installed.
-    Returns n_samples when everything fits (caller treats as full-batch).
+    The budget is capped at 4 GiB of hot buffers either way. Returns n_samples
+    when everything fits (caller treats as full-batch).
     """
     dtype_size = np.dtype(dtype).itemsize
     bytes_per_sample = int(
         (1 + 2 * n_components + 5 * n_components * n_mix_comps) * dtype_size * 1.2
     )
 
-    try:
-        import psutil
-        avail = psutil.virtual_memory().available
-        budget = min(float(avail) * memory_fraction, 4.0 * 1024 ** 3)
-    except Exception:
-        budget = 2.0 * 1024 ** 3  # 2 GiB fallback
+    on_gpu = (device == "gpu") or (device is None and _active_device_is_gpu())
+    budget = None
+    budget_source = "system-RAM"
+    if on_gpu:
+        gpu_budget = _gpu_memory_budget_bytes(memory_fraction)
+        if gpu_budget is not None:
+            budget = min(gpu_budget, 4.0 * 1024 ** 3)
+            budget_source = "GPU-VRAM"
+    if budget is None:
+        try:
+            import psutil
+            avail = psutil.virtual_memory().available
+            budget = min(float(avail) * memory_fraction, 4.0 * 1024 ** 3)
+        except Exception:
+            budget = 2.0 * 1024 ** 3  # 2 GiB fallback
 
     max_chunk = int(budget // bytes_per_sample)
     if max_chunk < 1:
         raise MemoryError(
-            f"Cannot fit even 1 sample in {budget / 1024**3:.1f} GiB budget. "
+            f"Cannot fit even 1 sample in {budget / 1024**3:.1f} GiB {budget_source} budget. "
             f"Per-sample cost: {bytes_per_sample / 1024:.1f} KB."
         )
 
@@ -748,9 +1100,9 @@ def _choose_chunk_size(
     min_chunk = min(max(8192, n_components * 32), n_samples)
     if chunk < min_chunk:
         logger.warning(
-            "Auto chunk_size %d is below recommended minimum %d. "
+            "Auto chunk_size %d (from %s budget) is below recommended minimum %d. "
             "Free memory or reduce n_components to avoid very small chunks.",
-            chunk, min_chunk,
+            chunk, budget_source, min_chunk,
         )
     return chunk
 
@@ -889,10 +1241,9 @@ class Amica:
             Fitted model containing mixing/unmixing matrices and
             all model parameters.
         """
-        if self.config.num_models > 1:
-            raise NotImplementedError(
-                "Multi-model training is not yet fully implemented in the single-model fit loop."
-            )
+        # Multi-model (num_models > 1) is handled by a separate, fully-isolated
+        # step path selected below; the single-model path is left untouched so
+        # M=1 results stay bit-for-bit identical.
 
         # Determine target JAX dtype
         dtype = jnp.float32 if self.config.dtype == "float32" else jnp.float64
@@ -1002,11 +1353,19 @@ class Amica:
         update_beta_static = self.config.update_beta
         update_rho_static = self.config.update_rho
 
-        # Resolve effective chunk size once (avoids psutil call each iteration)
+        # Resolve effective chunk size once (avoids psutil call each iteration).
+        # Pass the actual compute dtype so float32 gets a correspondingly larger
+        # chunk, and let _choose_chunk_size auto-detect GPU vs CPU to size the
+        # budget against VRAM (GPU) or system RAM (CPU).
         _cfg_cs = self.config.chunk_size
         if _cfg_cs == "auto":
+            _chunk_dtype = np.float32 if self.config.dtype == "float32" else np.float64
+            # Multi-model multiplies the per-sample E-step tensors by num_models;
+            # inflate the per-sample cost estimate so auto-chunking sizes against it.
+            _eff_nmix = self.config.num_mix_comps * max(1, self.config.num_models)
             _eff_chunk_size = _choose_chunk_size(
-                n_samples, n_components, self.config.num_mix_comps, dtype=np.float64,
+                n_samples, n_components, _eff_nmix,
+                dtype=_chunk_dtype,
             )
             if _eff_chunk_size >= n_samples:
                 _eff_chunk_size = None  # everything fits — full batch
@@ -1017,13 +1376,29 @@ class Amica:
         else:
             _eff_chunk_size = None  # None = full batch
 
+        _multimodel = self.config.num_models > 1
         if _eff_chunk_size is not None:
             _cs = _eff_chunk_size
-
-            def _step_fn(*args, _cs=_cs):
-                return _amica_step_chunked(*args, chunk_size=_cs)
+            if _multimodel:
+                def _step_fn(*args, _cs=_cs):
+                    return _amica_step_multimodel_chunked(*args, chunk_size=_cs)
+            else:
+                # Chunked single-model path is the fused single-pass accumulator.
+                def _step_fn(*args, _cs=_cs):
+                    return _amica_step_chunked(*args, chunk_size=_cs)
+        elif _multimodel:
+            # Full-batch multi-model: v-weighted per-model E/M-step.
+            _step_fn = _amica_step_multimodel
         else:
-            _step_fn = _amica_step
+            # Full-batch single-model: choose fused (default) vs classic.
+            # "auto" resolves to fused — numerically equivalent to classic
+            # (matches to ~1e-15 per step) but computes responsibilities once.
+            # "classic" is the parity oracle / exact-reproduction escape hatch.
+            _estep = self.config.estep
+            if _estep == "classic":
+                _step_fn = _amica_step
+            else:  # "auto" or "fused"
+                _step_fn = _amica_step_fused
 
         # Ensure initial state is JAX array with correct dtype
         W = jnp.asarray(W, dtype=dtype)
@@ -1106,6 +1481,21 @@ class Amica:
                 update_rho_static,
             )
 
+            # Stage 3F: always accept the (guarded) state. On a bad step each
+            # step function now returns the UNCHANGED input, so this reproduces
+            # the former discard-on-bad behavior exactly, while letting
+            # donate_argnums reuse the step's input buffers safely.
+            W, A, c, alpha, mu, beta, rho, gm = (
+                W_new,
+                A_new,
+                c_new,
+                alpha_new,
+                mu_new,
+                beta_new,
+                rho_new,
+                gm_new,
+            )
+
             # Block until scalars are ready (synchronize for checking)
             is_good_val = bool(is_good)
             ll_val = float(ll_curr)
@@ -1121,22 +1511,13 @@ class Amica:
                 elapsed_times.append(time.perf_counter() - start_time)
                 continue
 
-            # Accept update
-            W, A, c, alpha, mu, beta, rho, gm = (
-                W_new,
-                A_new,
-                c_new,
-                alpha_new,
-                mu_new,
-                beta_new,
-                rho_new,
-                gm_new,
-            )
             LL.append(ll_val)
 
             # ========== Sample Rejection ==========
+            # (single-model only; the per-sample LL below assumes 2D W/c)
             if (
-                self.config.do_reject
+                self.config.num_models == 1
+                and self.config.do_reject
                 and iteration >= self.config.rejstart
                 and rej_count < self.config.numrej
                 and (iteration - self.config.rejstart) % self.config.rejint == 0
@@ -1253,6 +1634,17 @@ class Amica:
                     natgrad_fallback_count,
                 )
 
+        # ========== Multi-model: model-posterior time-course p(h|t) ==========
+        model_posteriors = None
+        if self.config.num_models > 1:
+            from .multimodel import compute_model_posteriors
+
+            model_posteriors = np.asarray(
+                compute_model_posteriors(
+                    data_white, W, c, alpha, mu, beta, rho, gm, log_det_sphere
+                )
+            )
+
         # ========== Construct Result ==========
         self.result_ = AmicaResult(
             unmixing_matrix_white_=np.asarray(W),
@@ -1274,6 +1666,7 @@ class Amica:
             n_iter=len(LL),
             converged=converged,
             data_scale=scaling_factor,
+            model_posteriors_=model_posteriors,
         )
 
         assert self.result_ is not None
@@ -1325,6 +1718,46 @@ class Amica:
             Initial model probabilities.
         """
         rng = np.random.default_rng(self.random_state)
+
+        if n_models > 1:
+            # Multi-model init: per-model arrays with INDEPENDENT jitter so the
+            # models start distinct (identical inits never separate under EM).
+            # init_weights/init_params are not applied per-model here; use a 3D
+            # warm-start path in future if needed.
+            def _rand_A():
+                if self.config.fix_init:
+                    return np.eye(n_components, dtype=np.float64)
+                A_h = np.eye(n_components, dtype=np.float64) + 0.01 * (
+                    0.5 - rng.random((n_components, n_components))
+                )
+                cn = np.linalg.norm(A_h, axis=0)
+                cn = np.where(cn > 0.0, cn, 1.0)
+                return A_h / cn
+
+            A = jnp.asarray(np.stack([_rand_A() for _ in range(n_models)]), dtype=dtype)
+            W = jax.vmap(jnp.linalg.pinv)(A)
+
+            alpha = jnp.ones((n_models, n_mix, n_components), dtype=dtype) / n_mix
+            base = np.arange(n_mix, dtype=np.float64) - (n_mix - 1) / 2.0
+            mu_np = np.broadcast_to(
+                base[None, :, None], (n_models, n_mix, n_components)
+            ).astype(np.float64).copy()
+            if not self.config.fix_init:
+                mu_np = mu_np + 0.05 * (
+                    1.0 - 2.0 * rng.random((n_models, n_mix, n_components))
+                )
+            mu = jnp.asarray(mu_np, dtype=dtype)
+            if self.config.fix_init:
+                beta = jnp.ones((n_models, n_mix, n_components), dtype=dtype)
+            else:
+                beta = jnp.asarray(
+                    1.0 + 0.1 * (0.5 - rng.random((n_models, n_mix, n_components))),
+                    dtype=dtype,
+                )
+            rho = jnp.full((n_models, n_mix, n_components), self.config.rho0, dtype=dtype)
+            c = jnp.zeros((n_models, n_components), dtype=dtype)
+            gm = jnp.ones(n_models, dtype=dtype) / n_models
+            return W, A, alpha, mu, beta, rho, c, gm
 
         # Initialize mixing matrix then invert to get W.
         if init_weights is not None:

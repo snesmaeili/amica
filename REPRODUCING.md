@@ -15,15 +15,15 @@ regenerate them from source data.
 | Fig | File | Generating script | Input data |
 |-----|------|-------------------|-----------|
 | 1 — AMICA workflow | `fig_amica_workflow.png` | Static PNG (manually created) | — |
-| 2 — Software architecture | `fig_software_architecture.pdf` | `scripts/zenodo_figures/fig_software_architecture.dot` | — |
-| 3 — Synthetic recovery | `fig_synthetic_recovery.pdf` | `scripts/zenodo_figures/render_fig_synthetic_recovery.py` | `synthetic_long_all_metrics.csv` |
-| 4 — MNE sample topomaps | `fig_mne_sample_topomaps.pdf` | `scripts/mne_sample_demo/run_mne_sample_demo.py` | mne.datasets.sample (auto-download) |
-| 5 — MIR combined | `fig_mir_combined.pdf` | `scripts/zenodo_figures/render_fig_mir_combined.py` | `benchmark_results.csv` |
-| 6 — Cumulative dipolarity | `fig01_cumulative_dipolarity.pdf` | `scripts/zenodo_figures/render_cluster_figures.py` | `benchmark_results.csv` + `component_metrics.csv` |
-| 7 — Quality-cost / runtime | `fig_quality_cost.pdf` | `scripts/zenodo_figures/render_fig_runtime_combined.py` | `benchmark_results.csv` |
-| 8 — Convergence trajectory | `fig07_amica_iterations.pdf` | `scripts/zenodo_figures/render_cluster_figures.py` | `benchmark_results.csv` + `iteration_trace.csv` |
-| S1 — Backend parity | `fig_backend_parity.pdf` | `scripts/zenodo_figures/render_cluster_figures.py` | `benchmark_results.csv` + `component_metrics.csv` |
-| S2 — Kappa diagnostic | `fig08_kappa_sufficiency.pdf` | `scripts/zenodo_figures/render_cluster_figures.py` | `benchmark_results.csv` |
+| 2 — Software architecture | `fig_software_architecture.pdf` | `benchmark/zenodo_figures/fig_software_architecture.dot` | — |
+| 3 — Synthetic recovery | `fig_synthetic_recovery.pdf` | `benchmark/zenodo_figures/render_fig_synthetic_recovery.py` | `synthetic_long_all_metrics.csv` |
+| 4 — MNE sample topomaps | `fig_mne_sample_topomaps.pdf` | `examples/03_mne_sample_demo.py` | mne.datasets.sample (auto-download) |
+| 5 — MIR combined | `fig_mir_combined.pdf` | `benchmark/zenodo_figures/render_fig_mir_combined.py` | `benchmark_results.csv` |
+| 6 — Cumulative dipolarity | `fig01_cumulative_dipolarity.pdf` | `benchmark/zenodo_figures/render_cluster_figures.py` | `benchmark_results.csv` + `component_metrics.csv` |
+| 7 — Quality-cost / runtime | `fig_quality_cost.pdf` | `benchmark/zenodo_figures/render_fig_runtime_combined.py` | `benchmark_results.csv` |
+| 8 — Convergence trajectory | `fig07_amica_iterations.pdf` | `benchmark/zenodo_figures/render_cluster_figures.py` | `benchmark_results.csv` + `iteration_trace.csv` |
+| S1 — Backend parity | `fig_backend_parity.pdf` | `benchmark/zenodo_figures/render_cluster_figures.py` | `benchmark_results.csv` + `component_metrics.csv` |
+| S2 — Kappa diagnostic | `fig08_kappa_sufficiency.pdf` | `benchmark/zenodo_figures/render_cluster_figures.py` | `benchmark_results.csv` |
 
 The three CSV files in the "Input data" column are produced by running the
 benchmark pipeline (Steps 4–7 below). They are **not committed to the
@@ -41,7 +41,7 @@ repository** because of size; the committed figures were rendered from the
 | GPU with JAX/CUDA (paper used NVIDIA H100) | Paper-exact GPU results; CPU path is ~200× slower |
 | ds004505 OpenNeuro dataset (~10 GB, 25 subjects) | Figs 5–8, S1–S2 |
 | mne.datasets.sample (~1.5 GB, auto-downloads) | Fig 4 |
-| SLURM cluster (optional) | Parallel 25-subject runs; submit scripts in `scripts/cc_benchmark/` |
+| SLURM cluster (optional) | Parallel 25-subject runs; submit scripts in `benchmark/cc_benchmark/` |
 
 ---
 
@@ -72,7 +72,7 @@ python -c "import jax; print(jax.devices())"   # should show gpu device
 Requires graphviz:
 
 ```bash
-dot -Tpdf scripts/zenodo_figures/fig_software_architecture.dot \
+dot -Tpdf benchmark/zenodo_figures/fig_software_architecture.dot \
     -o overleaf-paper/figures/fig_software_architecture.pdf
 ```
 
@@ -85,8 +85,8 @@ metrics reported in §results-mne-sample. MNE sample data downloads
 automatically on first run.
 
 ```bash
-python scripts/mne_sample_demo/run_mne_sample_demo.py \
-    --out-dir scripts/mne_sample_demo/results \
+python examples/03_mne_sample_demo.py \
+    --out-dir examples/results \
     --n-components 20 \
     --max-iter 3000
 ```
@@ -94,7 +94,7 @@ python scripts/mne_sample_demo/run_mne_sample_demo.py \
 Copy output to overleaf:
 
 ```bash
-cp scripts/mne_sample_demo/results/fig_mne_sample_topomaps.pdf \
+cp examples/results/fig_mne_sample_topomaps.pdf \
    overleaf-paper/figures/fig_mne_sample_topomaps.pdf
 ```
 
@@ -105,8 +105,8 @@ cp scripts/mne_sample_demo/results/fig_mne_sample_topomaps.pdf \
 If you already have `synthetic_long_all_metrics.csv` from a prior run:
 
 ```bash
-python scripts/zenodo_figures/render_fig_synthetic_recovery.py \
-    --csv scripts/mne_synthetic/results/v1_full_analysis/synthetic_long_all_metrics.csv \
+python benchmark/zenodo_figures/render_fig_synthetic_recovery.py \
+    --csv benchmark/mne_synthetic/results/v1_full_analysis/synthetic_long_all_metrics.csv \
     --out overleaf-paper/figures/fig_synthetic_recovery.pdf
 ```
 
@@ -163,7 +163,7 @@ AMICA_COMPUTE_DIPOLES=0 \
     --n-iter 3000 \
     --input-level merged \
     --schema-version v3 \
-    --output-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
+    --output-dir benchmark/cc_benchmark/results/v3_paper_stage1_cluster
 ```
 
 **All 25 subjects:**
@@ -181,7 +181,7 @@ for i in $(seq 1 25); do
       --n-iter 3000 \
       --input-level merged \
       --schema-version v3 \
-      --output-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
+      --output-dir benchmark/cc_benchmark/results/v3_paper_stage1_cluster
 done
 
 # JAX-CPU backend
@@ -196,7 +196,7 @@ for i in $(seq 1 25); do
       --n-iter 3000 \
       --input-level merged \
       --schema-version v3 \
-      --output-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
+      --output-dir benchmark/cc_benchmark/results/v3_paper_stage1_cluster
 done
 
 # NumPy-CPU backend
@@ -211,7 +211,7 @@ for i in $(seq 1 25); do
       --n-iter 3000 \
       --input-level merged \
       --schema-version v3 \
-      --output-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
+      --output-dir benchmark/cc_benchmark/results/v3_paper_stage1_cluster
 done
 
 # Comparators: Picard, Infomax, FastICA
@@ -225,7 +225,7 @@ for method in picard infomax fastica; do
         --method $method \
         --input-level merged \
         --schema-version v3 \
-        --output-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
+        --output-dir benchmark/cc_benchmark/results/v3_paper_stage1_cluster
   done
 done
 ```
@@ -246,7 +246,7 @@ AMICA_COMPUTE_DIPOLES=0 \
 ### Option B — SLURM cluster (paper method)
 
 ```bash
-cd scripts/cc_benchmark
+cd benchmark/cc_benchmark
 
 # Edit fir_env.sh to set your module loads, venv path, and BIDS_ROOT_DS4505.
 # Then submit one array job per backend:
@@ -260,15 +260,15 @@ sbatch submit_fastica_cpu_v3.sh    # FastICA comparator
 
 Results land in `$AMICA_RESULTS_DIR` (default: `$SCRATCH/amica_python_validation_v3`).
 Copy the results directory to
-`scripts/cc_benchmark/results/v3_paper_stage1_cluster/` before aggregating.
+`benchmark/cc_benchmark/results/v3_paper_stage1_cluster/` before aggregating.
 
 ---
 
 ## Step 6 — Aggregate benchmark JSONs → CSVs
 
 ```bash
-python scripts/cc_benchmark/aggregate_results.py \
-    --results-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster
+python benchmark/cc_benchmark/aggregate_results.py \
+    --results-dir benchmark/cc_benchmark/results/v3_paper_stage1_cluster
 ```
 
 Produces three files in that directory:
@@ -284,7 +284,7 @@ Produces three files in that directory:
 
 ```bash
 OUT_DIR=$(pwd)/overleaf-paper/figures \
-  bash scripts/zenodo_figures/make_all.sh
+  bash benchmark/zenodo_figures/make_all.sh
 ```
 
 This writes `fig_synthetic_recovery.pdf`, `fig_mir_combined.pdf`, and
@@ -294,8 +294,8 @@ This writes `fig_synthetic_recovery.pdf`, `fig_mir_combined.pdf`, and
 
 ```bash
 AMICA_NO_RUN_MODE_BANNER=1 \
-  python scripts/zenodo_figures/render_cluster_figures.py \
-    --results-dir scripts/cc_benchmark/results/v3_paper_stage1_cluster \
+  python benchmark/zenodo_figures/render_cluster_figures.py \
+    --results-dir benchmark/cc_benchmark/results/v3_paper_stage1_cluster \
     --out overleaf-paper/figures
 ```
 
@@ -314,12 +314,12 @@ Required only if `synthetic_long_all_metrics.csv` does not yet exist.
 ### 8a — Generate one (condition, seed, method) fit
 
 ```bash
-python scripts/mne_synthetic/run_one_synthetic.py \
-    --config scripts/mne_synthetic/configs/benchmark_v1.json \
+python benchmark/mne_synthetic/run_one_synthetic.py \
+    --config benchmark/mne_synthetic/configs/benchmark_v1.json \
     --condition clean \
     --seed 101 \
     --method numpy_cpu \
-    --results-dir scripts/mne_synthetic/results/v1_full_analysis
+    --results-dir benchmark/mne_synthetic/results/v1_full_analysis
 ```
 
 ### 8b — Run all 300 fits (6 methods × 5 conditions × 10 seeds)
@@ -330,12 +330,12 @@ Local (sequential, slow — GPU methods take minutes each, CPU methods longer):
 for method in jax_gpu jax_cpu numpy_cpu picard infomax fastica; do
   for condition in clean noise noise_eog noise_ecg full; do
     for seed in 101 202 303 404 505 606 707 808 909 1010; do
-      python scripts/mne_synthetic/run_one_synthetic.py \
-        --config scripts/mne_synthetic/configs/benchmark_v1.json \
+      python benchmark/mne_synthetic/run_one_synthetic.py \
+        --config benchmark/mne_synthetic/configs/benchmark_v1.json \
         --condition $condition \
         --seed $seed \
         --method $method \
-        --results-dir scripts/mne_synthetic/results/v1_full_analysis
+        --results-dir benchmark/mne_synthetic/results/v1_full_analysis
     done
   done
 done
@@ -344,7 +344,7 @@ done
 SLURM (50-task array per method):
 
 ```bash
-cd scripts/mne_synthetic
+cd benchmark/mne_synthetic
 # Edit fir_env_synthetic.sh for your cluster environment, then:
 sbatch submit_jax_gpu_synthetic.sh
 sbatch submit_jax_cpu_synthetic.sh
@@ -357,9 +357,9 @@ sbatch submit_fastica_synthetic.sh
 ### 8c — Aggregate synthetic JSONs → CSV
 
 ```bash
-python scripts/mne_synthetic/aggregate_synthetic.py \
-    --results-dir scripts/mne_synthetic/results/v1_full_analysis \
-    --output-dir  scripts/mne_synthetic/results/v1_full_analysis
+python benchmark/mne_synthetic/aggregate_synthetic.py \
+    --results-dir benchmark/mne_synthetic/results/v1_full_analysis \
+    --output-dir  benchmark/mne_synthetic/results/v1_full_analysis
 ```
 
 Produces `synthetic_long_all_metrics.csv` in that directory.
@@ -367,34 +367,83 @@ Produces `synthetic_long_all_metrics.csv` in that directory.
 ### 8d — Render Fig 3
 
 ```bash
-python scripts/zenodo_figures/render_fig_synthetic_recovery.py \
-    --csv scripts/mne_synthetic/results/v1_full_analysis/synthetic_long_all_metrics.csv \
+python benchmark/zenodo_figures/render_fig_synthetic_recovery.py \
+    --csv benchmark/mne_synthetic/results/v1_full_analysis/synthetic_long_all_metrics.csv \
     --out overleaf-paper/figures/fig_synthetic_recovery.pdf
 ```
 
 ---
 
-## Notes on `--chunk-size` and GPU memory
+## Running on a local consumer GPU (not just H100)
 
-`chunk_size="auto"` reads **system RAM** via psutil, not GPU VRAM. On a machine
-with 32 GB RAM it will pick a chunk close to full-batch and OOM on an 8 GB GPU.
+AMICA-Python runs on a normal NVIDIA laptop/desktop GPU. Two knobs make the
+difference between an OOM and a clean run:
 
-For GPU runs, compute an explicit value:
+### 1. `--dtype float32` (roughly halves memory, often much faster on consumer GPUs)
 
+```bash
+python -m amica_python.benchmark.runner --dataset ds004505 --subject 1 \
+    --backend jax --device gpu --dtype float32 --chunk-size auto \
+    --n-iter 2000 --schema-version v3
 ```
-bytes_per_sample ≈ (1 + 2×n_comp + 5×n_comp×n_mix) × 8 × 1.2
-                  = (1 + 128 + 960) × 9.6 ≈ 10,454   (64 comp, 3 mix, float64)
 
-chunk_size = gpu_budget_bytes / bytes_per_sample
+`float64` is the **reference / parity** mode and stays the default. `float32` is a
+*fast* mode: it halves buffer memory and is markedly quicker on consumer GPUs that
+have weak FP64 throughput. Validate float32 results against a float64 run before
+trusting them for science (the package's tests assert float32 W matches float64 W
+to matched mean |r| > 0.999 on a fixed seed).
+
+### 2. `--chunk-size auto` is now VRAM-aware
+
+`chunk_size="auto"` sizes the E-step chunk against the **active device's free
+VRAM** when running on GPU (via `jax.devices()[0].memory_stats()`), and against
+system RAM via psutil on CPU. It no longer OOMs on a small GPU. You can still pass
+an explicit int to cap memory yourself:
+
+| GPU VRAM | auto budget (¼ of free) | resulting chunk (64 comp, 3 mix, f64) |
+|----------|-------------------------|----------------------------------------|
+| 8 GB | ~2 GB | ~200,000 |
+| 24 GB | ~4 GB (capped) | ~400,000 |
+| 80 GB (H100) | ~4 GB (capped) | ~400,000, or full-batch if it fits |
+
+`float32` doubles each chunk for the same budget.
+
+### 3. XLA memory env vars (for tight-VRAM machines / OOM debugging)
+
+JAX preallocates ~75% of VRAM by default. On a shared or small GPU:
+
+```bash
+# Cap JAX's preallocation to leave headroom for the OS / display:
+export XLA_PYTHON_CLIENT_MEM_FRACTION=0.85
+
+# Or disable preallocation entirely while debugging an OOM (slower, less
+# fragmentation-prone):
+export XLA_PYTHON_CLIENT_PREALLOCATE=false
 ```
 
-| GPU VRAM | budget for buffers | chunk_size (64 comp, 3 mix) |
-|----------|-------------------|------------------------------|
-| 8 GB | 4 GB | ~400,000 |
-| 8 GB | 2 GB (conservative) | ~200,000 |
-| 24 GB | 16 GB | ~1,600,000 (likely full-batch) |
+### Reading the timing fields
 
-`chunk_size="auto"` is safe on CPU-only runs where psutil reads the correct budget.
+v3 JSON now splits one-time compile from steady-state cost:
+
+- `jit_compile_s` — first-iteration XLA trace+compile. With the persistent
+  compilation cache warm (same shape/dtype re-run), this drops to ≈ 0.
+- `steady_iter_s` — median wall-time of a steady-state iteration (iters 1..N).
+
+So a run that looks "slow" end-to-end is often compile-dominated on the first
+shape; `steady_iter_s × n_iter` is the number that scales.
+
+### Reproducibility note (float64 trajectory)
+
+The solver skips a redundant per-iteration matrix inverse in the column-scaling
+step by using the exact identity `inv(A·diag(1/c)) = diag(c)·inv(A)` instead of
+recomputing `pinv`. This is exact in real arithmetic and passes the full parity
+suite (reconstruction `frob_rel < 1e-12`, chunked vs full-batch `rel_err < 1e-4`),
+but it is **not bit-reproducible** against older builds: the per-step difference
+sits at the float64 SVD floor (~1e-10) and the EM loop amplifies it to ~1e-4 in
+the final unmixing matrix over a few hundred iterations. This is the same class
+of non-determinism as a BLAS/LAPACK version change — both runs are valid AMICA
+fixed points at the same log-likelihood. Use a fixed seed and a pinned jaxlib if
+you need run-to-run bitwise identity.
 
 ---
 
@@ -438,7 +487,7 @@ After aggregation, spot-check the CSVs:
 ```bash
 python -c "
 import pandas as pd
-df = pd.read_csv('scripts/cc_benchmark/results/v3_paper_stage1_cluster/benchmark_results.csv')
+df = pd.read_csv('benchmark/cc_benchmark/results/v3_paper_stage1_cluster/benchmark_results.csv')
 print(df.groupby('method')[['mir_kbits_s','runtime_s']].median().round(3))
 "
 ```

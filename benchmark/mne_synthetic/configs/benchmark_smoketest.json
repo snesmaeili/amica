@@ -1,0 +1,55 @@
+{
+    "schema_version": "v1-smoketest",
+    "_purpose": "Tiny config for local smoke testing: 60 s duration, 100 max_iter, smaller n_true. Use benchmark_v1.json for the real cluster run.",
+    "dataset": {
+        "source": "mne.datasets.sample",
+        "subject": "sample",
+        "modality": "eeg",
+        "reference": "average"
+    },
+    "forward": {
+        "filename": "sample_audvis-meg-eeg-oct-6-fwd.fif",
+        "orientation": "fixed",
+        "pick": "eeg"
+    },
+    "sources": {
+        "n_true": 12,
+        "parcellation": "aparc",
+        "label_random_state": 0,
+        "exclude_label_prefixes": ["unknown"],
+        "waveform": {
+            "kind": "laplacian",
+            "bandpass_hz": [1.0, 40.0],
+            "amplitude_nAm": 50.0
+        }
+    },
+    "recording": {
+        "sfreq_sim_hz": 600.0,
+        "sfreq_final_hz": 250.0,
+        "duration_s": 60.0
+    },
+    "preprocess": {
+        "highpass_hz": 1.0,
+        "reference": "average",
+        "pca_n_components": 12
+    },
+    "conditions": [
+        {
+            "id": "clean",
+            "add_noise": false,
+            "iir_filter": null,
+            "noise_scale": 0.0,
+            "add_eog": false,
+            "add_ecg": false
+        }
+    ],
+    "seeds": [101],
+    "methods": {
+        "jax_gpu": {"family": "amica", "backend": "jax", "device": "gpu", "max_iter": 100},
+        "jax_cpu": {"family": "amica", "backend": "jax", "device": "cpu", "max_iter": 100},
+        "numpy_cpu": {"family": "amica", "backend": "numpy", "device": "cpu", "max_iter": 100},
+        "picard": {"family": "comparator", "method": "picard", "max_iter": 200, "tol": 1.0e-4, "ortho": false, "extended": true},
+        "infomax": {"family": "comparator", "method": "infomax", "max_iter": 200, "w_change": 1.0e-5, "extended": true},
+        "fastica": {"family": "comparator", "method": "fastica", "max_iter": 200, "tol": 1.0e-4, "fun": "logcosh"}
+    }
+}

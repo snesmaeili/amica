@@ -14,6 +14,28 @@ import numpy as np
 use_jax_env = os.environ.get("AMICA_NO_JAX", "0") != "1"
 HAS_JAX = False
 
+# Enable XLA's Triton GEMM emitter (GPU only; harmless/no-op on CPU). On a GPU
+# this can speed up the per-iteration matmuls (W @ data, g @ y.T) by ~5-15%.
+# Must be set BEFORE jax/XLA initialize. User-overridable: if XLA_FLAGS already
+# mentions triton_gemm we leave it alone.
+if use_jax_env:
+    _xla_flags = os.environ.get("XLA_FLAGS", "")
+    if "triton_gemm" not in _xla_flags:
+        os.environ["XLA_FLAGS"] = (_xla_flags + " --xla_gpu_triton_gemm_any=True").strip()
+
+# Optional GPU scheduling flag (Stage 3F, opt-in until benchmark-proven on the
+# target stack). Set AMICA_XLA_SCHED=1 to enable XLA's latency-hiding scheduler,
+# which overlaps compute with memory transfers on the per-iteration dense flows.
+# GPU-only (no-op on CPU), scheduling-only (does not change emitted arithmetic),
+# and override-safe (skipped if already present in XLA_FLAGS). Default OFF so the
+# reference behavior is unchanged; flip to default-on only after the H100 number.
+if use_jax_env and os.environ.get("AMICA_XLA_SCHED", "0") == "1":
+    _xla_flags = os.environ.get("XLA_FLAGS", "")
+    if "latency_hiding_scheduler" not in _xla_flags:
+        os.environ["XLA_FLAGS"] = (
+            _xla_flags + " --xla_gpu_enable_latency_hiding_scheduler=true"
+        ).strip()
+
 if use_jax_env:
     try:
         import jax
