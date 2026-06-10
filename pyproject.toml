@@ -3,12 +3,12 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mne-amica"
-version = "0.1.0"
+name = "amica-python"
+version = "0.0.1"
 description = "Native Python AMICA (Adaptive Mixture ICA) for MNE-Python"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "Sina Esmaeili", email = "sina.esmaeili@umontreal.ca"},
 ]
@@ -25,18 +25,119 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-jax = ["jax[cpu]>=0.4"]
+jax = ["jax>=0.4"]
 gpu = ["jax[cuda12]>=0.4"]
 mne = ["mne>=1.0"]
-dev = ["pytest>=7.0", "mne>=1.0", "matplotlib>=3.5"]
-all = ["jax[cpu]>=0.4", "mne>=1.0", "matplotlib>=3.5", "pytest>=7.0"]
+icalabel = ["mne-icalabel>=0.4"]
+viz = ["matplotlib>=3.5"]
+benchmark = [
+    "amica-python[mne,icalabel,viz]",
+    "pandas>=2.0",
+    "scipy>=1.7",
+    "scikit-learn>=1.0",
+    "python-picard>=0.7",
+    "tabulate>=0.9",
+    "onnxruntime>=1.15",
+]
+test = ["pytest>=7.0", "pytest-cov", "pytest-xdist", "pytest-timeout"]
+dev = ["amica-python[test]", "sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme", "myst-parser", "pre-commit>=3.0", "ruff>=0.9", "towncrier>=23.0", "nox"]
+all = ["jax>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "amica-python[benchmark]"]
+
+[dependency-groups]
+test = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "pytest-xdist",
+    "pytest-timeout",
+]
+docs = [
+    "sphinx>=5.0",
+    "numpydoc",
+    "sphinx-gallery",
+    "pydata-sphinx-theme",
+    "myst-parser",
+]
+lint = [
+    "pre-commit>=3.0",
+    "ruff>=0.9",
+]
+dev = [
+    {include-group = "test"},
+    {include-group = "docs"},
+    {include-group = "lint"},
+    "towncrier>=23.0",
+    "nox",
+]
+
+[tool.towncrier]
+package = "amica_python"
+filename = "CHANGELOG.md"
+directory = "changes"
+title_format = "## [{version}](https://github.com/snesmaeili/amica-python/releases/tag/v{version}) ({project_date})"
+issue_format = "[#{issue}](https://github.com/snesmaeili/amica-python/pull/{issue})"
+template = "changes/template.md"
+
+[[tool.towncrier.type]]
+directory = "enh"
+name = "Enhancements"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Bug Fixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "api"
+name = "API Changes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "dep"
+name = "Dependencies"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "authors"
+name = "Authors"
+showcontent = true
 
 [project.urls]
-Homepage = "https://github.com/snesmaeili/mne-amica"
-Repository = "https://github.com/snesmaeili/mne-amica"
+Homepage = "https://github.com/snesmaeili/amica-python"
+Repository = "https://github.com/snesmaeili/amica-python"
 
 [tool.setuptools.packages.find]
-include = ["mne_amica*"]
+include = ["amica_python*"]
 
-[tool.pytest.ini_options]
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+extend-select = ["B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["amica_python"]
+
+[tool.pytest]
+minversion = "9"
 testpaths = ["tests"]
+log_level = "INFO"
+strict = true
+addopts = ["-ra"]
+markers = [
+    "gpu: requires --backend=gpu and a reachable JAX GPU device",
+    "slow: long-running; pass --run-slow to include",
+    "timeout: per-test timeout in seconds (pytest-timeout)",
+]
+filterwarnings = [
+    "error",
+    "ignore:Unrecognized profile:UserWarning",
+    "ignore:Unknown section Matrix Naming Convention:UserWarning",
+    "ignore:Citation.*is not referenced:UserWarning",
+    "ignore:The rcond argument for linalg.pinv is deprecated:DeprecationWarning",
+]
+
+[tool.coverage.run]
+omit = ["amica_python/binary.py"]

@@ -1,0 +1,124 @@
+// Software-architecture schematic for the zenodo preprint §3 Implementation.
+// Render with:
+//     dot -Tpdf fig_software_architecture.dot -o fig_software_architecture.pdf
+digraph AMICAPythonArchitecture {
+    graph [
+        rankdir=TB,
+        bgcolor="white",
+        pad="0.25",
+        nodesep="0.45",
+        ranksep="0.60",
+        splines=ortho,
+        outputorder=edgesfirst
+    ];
+
+    node [
+        shape=rect,
+        style="rounded,filled",
+        fontname="Helvetica",
+        fontsize=14,
+        color="#0B1F4D",
+        penwidth=1.5,
+        fillcolor="#F8FAFC",
+        margin="0.16,0.10"
+    ];
+
+    edge [
+        color="#0B1F4D",
+        penwidth=1.6,
+        arrowsize=0.8,
+        fontname="Helvetica",
+        fontsize=11
+    ];
+
+    // Inputs
+    raw_epochs [
+        label="MNE input\nRaw / Epochs",
+        fillcolor="#EEF7F6"
+    ];
+
+    ndarray [
+        label="Array input\nX",
+        fillcolor="#EEF7F6"
+    ];
+
+    // APIs
+    fitica [
+        label="MNE entry point\nfit_ica()",
+        fillcolor="#EAF4F4"
+    ];
+
+    estimator [
+        label="Low-level APIs\nAmica.fit() / amica(X, ...)",
+        fillcolor="#EAF4F4"
+    ];
+
+    // Shared core
+    core [
+        label="Shared AMICA numerical core\n\nEM loop\nE-step responsibilities\nM-step density updates: α, μ, β, ρ\nM-step unmixing: natural gradient → pairwise quasi-Newton\nlikelihood and timing logs",
+        fillcolor="#E7F3F1",
+        penwidth=2.2
+    ];
+
+    // Internal layers
+    backend [
+        label="Backend layer\n\nNumPy\nJAX CPU\nJAX GPU",
+        fillcolor="#F8FAFC"
+    ];
+
+    memory [
+        label="Memory layer\n\nfull-batch E-step\nchunked sufficient-statistic accumulator",
+        fillcolor="#F8FAFC"
+    ];
+
+    state [
+        label="State and configuration\n\nAmicaConfig\nAmicaResult\nrandom_state",
+        fillcolor="#F8FAFC"
+    ];
+
+    // Outputs
+    mneica [
+        label="MNE output\nmne.preprocessing.ICA\nplot / apply / save / ICLabel",
+        fillcolor="#EEF7F6"
+    ];
+
+    result [
+        label="Low-level output\nAmicaResult\ntransform / inverse_transform",
+        fillcolor="#EEF7F6"
+    ];
+
+    // Validation strip
+    validation [
+        label="Validation targets\n\nFortran parity  |  backend agreement  |  chunked/full-batch agreement  |  MNE API conformance",
+        fillcolor="#FFF4E6",
+        color="#C65F00",
+        penwidth=1.8
+    ];
+
+    // Layout
+    { rank=same; raw_epochs; ndarray; }
+    { rank=same; fitica; estimator; }
+    { rank=same; backend; memory; state; }
+    { rank=same; mneica; result; }
+
+    raw_epochs -> fitica;
+    ndarray -> estimator;
+
+    fitica -> core;
+    estimator -> core;
+
+    core -> backend;
+    core -> memory;
+    core -> state;
+
+    backend -> mneica;
+    memory -> mneica;
+    state -> mneica;
+
+    backend -> result;
+    memory -> result;
+    state -> result;
+
+    mneica -> validation;
+    result -> validation;
+}

@@ -1,83 +1,121 @@
-# mne-amica
+# amica-python
 
-Native Python implementation of AMICA (Adaptive Mixture Independent Component Analysis) for MNE-Python.
+[![Tests](https://github.com/snesmaeili/amica-python/actions/workflows/tests.yml/badge.svg)](https://github.com/snesmaeili/amica-python/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/snesmaeili/amica-python/branch/main/graph/badge.svg)](https://codecov.io/gh/snesmaeili/amica-python)
+[![Python](https://img.shields.io/pypi/pyversions/amica-python.svg)](https://pypi.org/project/amica-python/)
+[![Docs](https://github.com/snesmaeili/amica-python/actions/workflows/docs.yml/badge.svg)](https://github.com/snesmaeili/amica-python/actions/workflows/docs.yml)
+[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
-AMICA is the highest-performing ICA algorithm for EEG/MEG data, achieving the best mutual information reduction and source dipolarity among 22 tested algorithms ([Delorme et al., 2012](https://doi.org/10.1371/journal.pone.0030135)).
+> **Note:** This package is under active validation. The core algorithm works and matches MATLAB AMICA numerically, but the full validation suite and documentation are still in progress.
+
+Python reimplementation of AMICA (Adaptive Mixture ICA), originally a closed-source Fortran binary from UCSD (Palmer et al., 2011). AMICA ranked first among 22 ICA algorithms for EEG in mutual information reduction and source dipolarity (Delorme et al., 2012).
+
+This package provides the full algorithm in Python with optional JAX acceleration and MNE-Python integration.
 
 ## Installation
 
 ```bash
-pip install mne-amica
-
-# With JAX acceleration (recommended)
-pip install "mne-amica[jax]"
-
-# With MNE-Python integration
-pip install "mne-amica[mne]"
-
-# Everything
-pip install "mne-amica[all]"
+git clone https://github.com/snesmaeili/amica-python.git
+cd amica-python
+pip install -e ".[all]"
 ```
 
-For development:
+Extras: `jax` (JAX backend), `mne` (MNE-Python integration), `dev` (testing).
 
-```bash
-git clone https://github.com/snesmaeili/mne-amica.git
-cd mne-amica
-pip install -e ".[dev]"
-```
+## Usage
 
-## Quick Start
+The fastest way to get started is to look at our fully commented examples in the `examples/` directory:
+- [**MNE Integration** (`examples/01_mne_integration.py`)](examples/01_mne_integration.py): Shows how to load EEG data, filter it, and run AMICA using the MNE `fit_ica()` wrapper.
+- [**Pure JAX Fitting** (`examples/02_pure_jax_fitting.py`)](examples/02_pure_jax_fitting.py): Shows how to configure the core `AmicaConfig` and run hardware-accelerated fitting directly on numpy arrays.
 
-### Standalone
+### Core API Quickstart
 
 ```python
-from mne_amica import Amica, AmicaConfig
+from amica_python import Amica, AmicaConfig
 
 config = AmicaConfig(max_iter=2000, num_mix_comps=3)
 model = Amica(config, random_state=42)
-result = model.fit(data)  # data: (n_channels, n_samples)
-
+result = model.fit(data)  # (n_channels, n_samples)
 sources = model.transform(data)
 ```
 
-### With MNE-Python
+### MNE-Python Integration
+
+`fit_ica` returns a standard `mne.preprocessing.ICA` object, so all MNE methods work out of the box:
 
 ```python
-from mne_amica import amica
+from amica_python import fit_ica
 
-# Picard-compatible functional API
-W, n_iter = amica(X, return_n_iter=True, max_iter=2000)
+ica = fit_ica(raw, n_components=20, max_iter=2000)
+ica.plot_components()
+ica.apply(raw)
 ```
 
-### Planned: MNE ICA Integration
+### Picard-compatible Functional API
+
+For drop-in replacement in custom ICA pipelines:
 
 ```python
-from mne.preprocessing import ICA
-ica = ICA(n_components=20, method='amica')
-ica.fit(raw)
+from amica_python import amica
+
+# X: (n_features, n_samples) — same convention as picard
+K, W, Y = amica(X)
+K, W, Y, n_iter = amica(X, return_n_iter=True)
 ```
 
-## Features
+### Running on a cluster
 
-- Full AMICA algorithm: ICA mixture model with adaptive generalized Gaussian source densities
-- Newton optimization with quadratic convergence
-- EM-based parameter updates with GEM convergence guarantee
-- Sample rejection for artifact robustness
-- JAX acceleration (GPU/TPU) with NumPy fallback
-- scikit-learn-compatible API
+To fit AMICA on your own data on an HPC cluster (one GPU per fit is enough), use
+the generic Slurm template in [`examples/cluster/`](examples/cluster/) — adapt the
+account/modules/venv and point it at your recording. Details in
+[`examples/cluster/README.md`](examples/cluster/README.md).
 
-## Default Parameters
+## Repository layout
 
-| Parameter | Default | Reference |
-|-----------|---------|-----------|
-| `max_iter` | 2000 | Frank et al. (2023) |
-| `num_mix_comps` | 3 | Frank et al. (2023) |
-| `do_newton` | True | Palmer et al. (2008) |
-| `newt_start` | 50 | Palmer et al. (2008) |
-| `rejstart` | 2 | Klug et al. (2024) |
-| `rejint` | 3 | Klug et al. (2024) |
-| `rejsig` | 3.0 | Klug et al. (2024) |
+```
+amica_python/   the package: core algorithm, JAX/NumPy backends, MNE integration
+examples/       runnable usage examples (local API + cluster template)
+tests/          unit and numerical-parity tests
+docs/           Sphinx documentation
+benchmark/      research/validation scripts behind the paper (not needed to use the package)
+```
+
+## Background
+
+AMICA fits an ICA mixture model where each source has its own mixture of generalized Gaussians with adaptive shape (rho), scale (beta), and location (mu). The shape parameter interpolates between Laplacian (rho=1, super-Gaussian) and Gaussian (rho=2), so it adapts to whatever the data actually looks like rather than assuming a fixed distribution.
+
+Convergence uses natural gradient followed by Newton optimization (Palmer et al., 2008). Optional sample rejection (Klug et al., 2024) downweights outlier time points.
+
+## Reproducing the paper
+
+See [REPRODUCING.md](REPRODUCING.md) for the full pipeline: installation,
+dataset download, benchmark runs (local or SLURM), CSV aggregation, and
+figure-rendering commands for each of the 10 paper figures.
+
+## Validation
+
+Numerical parity with MATLAB AMICA 1.7:
+
+| Configuration                | LL difference | W correlation |
+| ---------------------------- | ------------- | ------------- |
+| 1 model, Newton              | 0.0002%       | > 0.9999      |
+| 3 mixtures, Newton           | 0.00008%      | > 0.9999      |
+| 3 mixtures, natural gradient | 0.08%         | > 0.9995      |
+
+Amari index on synthetic Laplacian sources (3 ch, 5000 samples): AMICA 0.008, FastICA 0.010, Infomax 0.195.
+
+## Parameters
+
+Defaults follow Frank et al. (2023) and Klug et al. (2024):
+
+| Parameter       | Default | What it does                           |
+| --------------- | ------- | -------------------------------------- |
+| `max_iter`      | 2000    | EM iterations                          |
+| `num_mix_comps` | 3       | Mixture components per source          |
+| `do_newton`     | True    | Newton optimization after iteration 50 |
+| `do_reject`     | False   | Outlier sample rejection               |
+| `rejsig`        | 3.0     | Rejection threshold in SD              |
+| `rho0`          | 1.5     | Initial shape parameter                |
 
 ## References
 

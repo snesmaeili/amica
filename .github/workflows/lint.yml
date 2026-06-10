@@ -1,0 +1,35 @@
+name: Lint
+
+on:
+  push:
+    branches: [main, production-ready-amica]
+  pull_request:
+    branches: [main, production-ready-amica]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv pip install --group lint --system
+
+      - name: Run pre-commit
+        run: pre-commit run --all-files

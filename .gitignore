@@ -1,10 +1,91 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.egg-info/
-dist/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+bin/
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.status
+.pytest_cache/
+pytestdebug.log
+
+# Sphinx documentation
+docs/_build/
+_build/
+docs/generated/
+docs/auto_examples/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Demo data artifacts: keep the .ipynb, ignore the large raw/cleaned .fif + ICA solutions
+notebooks/**/*.fif
+notebooks/amica_eegbci_results/
+
+# Environments
+.env
+.venv
 .venv*/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Project specific
+validation/
+results/
+scripts/cc_benchmark/results/
 .matlab_engine_src/
+logs/
 *.fdt
 *.set
 tmpdata*.fdt
+slurm-*.out
+slurm-*.err
+*.f90
