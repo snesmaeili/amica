@@ -1,3 +1,0 @@
-# Shell scripts must keep LF on every platform so bash on the Linux cluster
-# can execute them. Sbatch / bash rejects CRLF outright.
-*.sh text eol=lf

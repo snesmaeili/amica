@@ -1,7 +1,0 @@
-# Local + cluster results land here; never commit to git.
-results/
-
-# Python caches
-__pycache__/
-*.pyc
-*.pyo
