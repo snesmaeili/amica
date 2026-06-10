@@ -9,6 +9,11 @@ export XDG_DATA_HOME="/scratch/$USER/.local/share"
 export PIP_CACHE_DIR="/scratch/$USER/.cache/pip"
 mkdir -p "$XDG_CACHE_HOME" "$XDG_DATA_HOME" "$PIP_CACHE_DIR"
 
+# ── Per-user/site config: copy env.template -> env.local and edit (env.local is gitignored).
+# Sourced here if present so accounts/paths can be overridden without editing this file.
+_ENV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "$_ENV_DIR/env.local" ] && source "$_ENV_DIR/env.local"
+
 module purge
 module load StdEnv/2023 || true
 module load python/3.11
@@ -24,7 +29,7 @@ if [ -n "$CUDA_HOME" ]; then
 fi
 
 # ── Dataset paths (crash-course rule: reuse shared /project datasets) ──
-export BIDS_ROOT_DS4505="/project/rrg-kjerbi/datasets/openneuro/ds004505/raw_bids"
+export BIDS_ROOT_DS4505="${BIDS_ROOT_DS4505:-/project/rrg-kjerbi/datasets/openneuro/ds004505/raw_bids}"
 
 # ── NumPy/MKL thread tuning ──
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
@@ -33,7 +38,7 @@ export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 
 # ── Results directory ──
 # Temporarily pointing to scratch because the team /project quota is full!
-RESULTS_DIR="/scratch/$USER/amica_python_validation_outputs"
+RESULTS_DIR="${AMICA_RESULTS_DIR:-/scratch/$USER/amica_python_validation_outputs}"
 export AMICA_RESULTS_DIR="$RESULTS_DIR"
 mkdir -p "$RESULTS_DIR"
 

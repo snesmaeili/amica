@@ -89,3 +89,6 @@ tmpdata*.fdt
 slurm-*.out
 slurm-*.err
 *.f90
+
+# Per-user cluster config (see benchmark/cc_benchmark/env.template)
+env.local
