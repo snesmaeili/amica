@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.21",
-    "scipy>=1.7",
+    "scipy>=1.15.3",
 ]
 
 [project.optional-dependencies]
@@ -33,7 +33,7 @@ viz = ["matplotlib>=3.5"]
 benchmark = [
     "amica-python[mne,icalabel,viz]",
     "pandas>=2.0",
-    "scipy>=1.7",
+    "scipy>=1.15.3",
     "scikit-learn>=1.0",
     "python-picard>=0.7",
     "tabulate>=0.9",
