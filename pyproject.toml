@@ -27,7 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 jax = ["jax>=0.4"]
 gpu = ["jax[cuda12]>=0.4"]
-mne = ["mne>=1.0"]
+mne = ["mne>=1.12.1"]
 icalabel = ["mne-icalabel>=0.4"]
 viz = ["matplotlib>=3.5"]
 benchmark = [
@@ -41,7 +41,7 @@ benchmark = [
 ]
 test = ["pytest>=7.0", "pytest-cov", "pytest-xdist", "pytest-timeout"]
 dev = ["amica-python[test]", "sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme", "myst-parser", "pre-commit>=3.0", "ruff>=0.9", "towncrier>=23.0", "nox"]
-all = ["jax>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "amica-python[benchmark]"]
+all = ["jax>=0.4", "mne>=1.12.1", "matplotlib>=3.5", "mne-icalabel>=0.4", "amica-python[benchmark]"]
 
 [dependency-groups]
 test = [
