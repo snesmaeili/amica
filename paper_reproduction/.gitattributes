@@ -1,0 +1,6 @@
+# Line endings: keep shell scripts and Fortran sources as LF on every
+# platform so the Linux/Docker build never sees CRLF (which breaks the
+# `#!/usr/bin/env bash` shebang and gfortran on some toolchains).
+*.sh        text eol=lf
+*.f90       text eol=lf
+Dockerfile  text eol=lf

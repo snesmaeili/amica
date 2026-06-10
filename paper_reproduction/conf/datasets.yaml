@@ -1,0 +1,18 @@
+# Dataset configuration for amica-benchmark
+
+ds004505:
+  path: /home/sesma/scratch/ds004505
+  subjects: 25
+  channels_scalp: 120
+  channels_noise: 120
+  sfreq: 1000
+  description: >
+    MoBI dual-layer 120-channel EEG during table tennis (Studnicki et al. 2022).
+    Includes noise electrodes for iCanClean preprocessing.
+  reference: "doi:10.3390/s22155867"
+
+mne_sample:
+  path: null  # auto-downloaded by MNE
+  channels: 59
+  sfreq: 600
+  description: "MNE built-in sample dataset (stationary auditory/visual paradigm)"

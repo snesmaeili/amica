@@ -1,0 +1,114 @@
+{
+  "generated_at": "2026-05-01T21:54:54Z",
+  "dataset": "mne",
+  "n_components": 30,
+  "data_shape": [
+    59,
+    166800
+  ],
+  "params_used": {
+    "lrate": 0.1,
+    "num_mix": 3,
+    "rho0": 1.5,
+    "minrho": 1.0,
+    "maxrho": 2.0,
+    "rholrate": 0.05,
+    "newt_start": 50,
+    "newt_ramp": 10,
+    "newtrate": 1.0,
+    "invsigmin": 1e-08,
+    "invsigmax": 100.0,
+    "max_decs": 3,
+    "min_dll": 1e-09,
+    "do_reject": false,
+    "doscaling": true,
+    "use_grad_norm": false,
+    "sphere_type": "pca",
+    "pcakeep": 30
+  },
+  "adapters": {
+    "amica-python": {
+      "sphere_shape": [
+        30,
+        59
+      ],
+      "sphere_dtype": "float64",
+      "mean_shape": [
+        59
+      ],
+      "mean_dtype": "float64",
+      "log_det_sphere": 357.7263181396006,
+      "has_sphere_full": false
+    },
+    "pyamica": {
+      "sphere_shape": [
+        30,
+        59
+      ],
+      "sphere_dtype": "float64",
+      "mean_shape": [
+        59
+      ],
+      "mean_dtype": "float64",
+      "log_det_sphere": 357.7263181396006,
+      "has_sphere_full": false
+    },
+    "fortran": {
+      "sphere_shape": [
+        30,
+        59
+      ],
+      "sphere_dtype": "float64",
+      "mean_shape": [
+        59
+      ],
+      "mean_dtype": "float64",
+      "log_det_sphere": 0.0,
+      "has_sphere_full": true
+    }
+  },
+  "pair_metrics": {
+    "amica-python vs pyamica": {
+      "sphere_max_abs_diff": 1.338048605248332e-08,
+      "sphere_frobenius": 4.262758765450267e-08,
+      "mean_max_abs_diff": 5.1285197978287716e-23,
+      "mean_l2": 1.2752440012320764e-22,
+      "sphere_diag_max_abs_diff": 2.764863893389702e-09,
+      "sphere_offdiag_max_abs_diff": 1.338048605248332e-08,
+      "sphere_row_norm_ratio_min": 0.9999999999999974,
+      "sphere_row_norm_ratio_max": 1.0000000000000024,
+      "sphere_row_norm_ratio_median": 1.0,
+      "dtype_match": true,
+      "sphere_dtype_a": "float64",
+      "sphere_dtype_b": "float64"
+    },
+    "amica-python vs fortran": {
+      "sphere_max_abs_diff": 267491.14683476015,
+      "sphere_frobenius": 1574194.5817845173,
+      "mean_max_abs_diff": 1.089603723096841e-15,
+      "mean_l2": 3.400694597590162e-15,
+      "sphere_diag_max_abs_diff": 267491.14683476015,
+      "sphere_offdiag_max_abs_diff": 204427.47015797987,
+      "sphere_row_norm_ratio_min": 0.21855931415963448,
+      "sphere_row_norm_ratio_max": 2.0652579958179813,
+      "sphere_row_norm_ratio_median": 0.9066759540496767,
+      "dtype_match": true,
+      "sphere_dtype_a": "float64",
+      "sphere_dtype_b": "float64"
+    },
+    "pyamica vs fortran": {
+      "sphere_max_abs_diff": 267491.1468347589,
+      "sphere_frobenius": 1574194.581784518,
+      "mean_max_abs_diff": 1.089603729714286e-15,
+      "mean_l2": 3.400694592121834e-15,
+      "sphere_diag_max_abs_diff": 267491.1468347589,
+      "sphere_offdiag_max_abs_diff": 204427.4701579806,
+      "sphere_row_norm_ratio_min": 0.21855931415963453,
+      "sphere_row_norm_ratio_max": 2.0652579958179778,
+      "sphere_row_norm_ratio_median": 0.9066759540496765,
+      "dtype_match": true,
+      "sphere_dtype_a": "float64",
+      "sphere_dtype_b": "float64"
+    }
+  }
+}

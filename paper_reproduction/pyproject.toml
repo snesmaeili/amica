@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amica-benchmark"
+version = "0.1.0"
+description = "Validation and benchmarking suite for amica-python"
+requires-python = ">=3.9"
+license = {text = "BSD-3-Clause"}
+authors = [
+    {name = "Sina Esmaeili", email = "sina.esmaeili@umontreal.ca"},
+]
+readme = "README.md"
+
+dependencies = [
+    "numpy>=1.21",
+    "scipy>=1.7",
+    "scikit-learn>=1.0",
+    "mne>=1.0",
+    "mne-icalabel>=0.4",
+    "matplotlib>=3.5",
+    "pandas>=1.4",
+    "seaborn>=0.12",
+    "pyyaml>=6.0",
+    "tabulate>=0.9",
+]
+
+[project.optional-dependencies]
+jax-cpu = ["jax[cpu]>=0.4"]
+jax-gpu = ["jax[cuda12]>=0.4"]
+amica = ["amica-python @ git+https://github.com/snesmaeili/amica-python.git"]
+
+[tool.setuptools]
+packages = []

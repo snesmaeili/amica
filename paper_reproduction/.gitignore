@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Results (large files)
+results/**/*.pkl
+results/**/*.fdt
+results/**/*.npy
+results/**/*.npz
+results/**/*.mat
+!results/README.md
+
+# run_validation.py writes outputs next to the script (not under results/);
+# treat that subdir as runtime byproduct, not source.
+scripts/comparison/results/
+
+# Slurm logs
+logs/
+*.err
+*.out
+
+# Virtualenvs
+.venv/
+.venv-*/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+*.egg-info/
+
+# JAX cache
+.cache/
+
+# Large regenerable per-sample LL traces (excluded from git)
+results/**/LLt
