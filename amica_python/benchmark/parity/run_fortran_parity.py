@@ -51,6 +51,34 @@ def make_synthetic_6ch(n_channels=6, n_samples=20000, seed=0):
     return X.astype(np.float64), A, S
 
 
+def make_ds004505_reduced(subject_id=1, k_pca=64, sfreq=250.0,
+                          n_samples_cap=None, input_level="bids"):
+    """Load ds004505 sub-NN through the project's own loader+filters, mean-center,
+    and PCA-reduce to ``k_pca`` full-rank components.
+
+    Returns Xr (k_pca, n_samples) float64. Reducing to k_pca << channel-rank
+    guarantees a well-conditioned, full-rank input -> a square (k_pca x k_pca)
+    sphering matrix on both sides, so the fixed-init parity path (shared sphere)
+    works exactly as in the synthetic test regardless of average-reference rank.
+    """
+    from amica_python.benchmark.runner import load_data, preprocess
+    raw = load_data("ds004505", int(subject_id), input_level=input_level)
+    raw.load_data()
+    if sfreq and abs(float(raw.info["sfreq"]) - float(sfreq)) > 1e-6:
+        raw.resample(float(sfreq))
+    preprocess(raw)  # FIR 1-100 Hz band-pass + 60 Hz notch (project-standard)
+    X = raw.get_data().astype(np.float64)            # (n_ch, n_samp)
+    if n_samples_cap:
+        X = X[:, : int(n_samples_cap)]
+    Xc = X - X.mean(axis=1, keepdims=True)
+    # PCA projection onto the top-k_pca principal axes (decorrelated, full rank)
+    cov = (Xc @ Xc.T) / Xc.shape[1]
+    evals, evecs = np.linalg.eigh(cov)               # ascending
+    Vk = evecs[:, ::-1][:, : int(k_pca)]             # (n_ch, k_pca) top-k
+    Xr = Vk.T @ Xc                                   # (k_pca, n_samp)
+    return Xr.astype(np.float64)
+
+
 def cmd_prep(args):
     wd = Path(args.workdir)
     (wd / "data").mkdir(parents=True, exist_ok=True)
@@ -58,6 +86,9 @@ def cmd_prep(args):
     if args.dataset == "synth6":
         X, A_true, S_true = make_synthetic_6ch(args.n_channels, args.n_samples, args.seed)
         np.savez(wd / "ground_truth.npz", A_true=A_true)
+    elif args.dataset == "ds004505":
+        cap = int(args.n_samples_cap) if getattr(args, "n_samples_cap", 0) else None
+        X = make_ds004505_reduced(args.subject, args.k_pca, n_samples_cap=cap)
     else:
         raise SystemExit(f"prep dataset {args.dataset} not implemented here")
     fio.write_fdt(X, wd / "data" / "data.fdt")
@@ -68,8 +99,9 @@ def cmd_prep(args):
         files=str(args.container_data + "/data.fdt"),
         outdir=str(args.container_out + "/"),
         n_channels=X.shape[0], n_samples=X.shape[1],
+        block_size=min(int(X.shape[1]), 100000),
         do_sphere=1, do_mean=1, doPCA=1, pcakeep=X.shape[0],
-        writestep=1, write_LLt=1, max_threads=1, fix_init=1,
+        writestep=1, write_LLt=0, max_threads=1, fix_init=1,
         use_min_dll=0, use_grad_norm=0,   # run full max_iter (no early stop) for matched-iter parity
         **hp,
     )
@@ -178,6 +210,8 @@ def cmd_compare(args):
                            if (ll_f_traj.size and ll_py.size) else None),
         ll_first5_fortran=[float(x) for x in ll_f_traj[:5]],
         ll_first5_python=[float(x) for x in ll_py[:5]],
+        ll_full_fortran=[float(x) for x in ll_f_traj],
+        ll_full_python=[float(x) for x in ll_py],
         fortran_ll_decreasing_events=None,
     )
     (wd / "parity.json").write_text(json.dumps(out, indent=2), newline="\n")
@@ -197,6 +231,11 @@ def main():
     pp.add_argument("--max-iter", type=int, default=2000)
     pp.add_argument("--do-newton", type=int, default=1)
     pp.add_argument("--seed", type=int, default=0)
+    pp.add_argument("--subject", type=int, default=1, help="ds004505 subject number")
+    pp.add_argument("--k-pca", type=int, default=64,
+                    help="PCA dims for real-data parity (full-rank, square sphere)")
+    pp.add_argument("--n-samples-cap", type=int, default=0,
+                    help="cap n_samples for real data (0 = use all)")
     pp.add_argument("--container-data", default="/data",
                     help="data dir path as seen by the Fortran binary (bind/cwd)")
     pp.add_argument("--container-out", default="/out",
