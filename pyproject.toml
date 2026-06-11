@@ -35,7 +35,7 @@ benchmark = [
     "pandas>=2.0",
     "scipy>=1.7",
     "scikit-learn>=1.0",
-    "python-picard>=0.7",
+    "python-picard>=0.8.2",
     "tabulate>=0.9",
     "onnxruntime>=1.15",
 ]
