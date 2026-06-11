@@ -29,6 +29,10 @@ PER_IMPL_KEYS = (
     "n_iter",
     "fit_time_s",
     "peak_rss_gb",
+    "baseline_rss_gb",
+    "delta_rss_gb",
+    "peak_vram_gb",
+    "nvml_peak_vram_gb",
     "ll_final",
     "device",
     "dtype",
@@ -101,7 +105,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--impls",
-        default="amica_python_jax,scott_huberty_torch,pyamica_torch,neuromechanist_numpy",
+        default="amica_python_jax,scott_huberty_torch,pyamica_torch,neuromechanist_numpy,fortran_amica17",
         help="Comma-separated implementations to include. Defaults to the 4 pilot "
              "impls; excludes stray results (e.g. amica_python_numpy left over from "
              "a smoke test). Pass 'all' to include every *_result.json found.",
@@ -203,6 +207,10 @@ def main() -> None:
             "subject_id": r["subject_id"],
             "fit_runtime_s": r["fit_time_s"],
             "peak_memory_gb": r["peak_rss_gb"],
+            "baseline_memory_gb": r.get("baseline_rss_gb"),
+            "delta_memory_gb": r.get("delta_rss_gb"),
+            "peak_vram_gb": r.get("peak_vram_gb"),
+            "nvml_peak_vram_gb": r.get("nvml_peak_vram_gb"),
             "n_iter_actual": r["n_iter"],
             "max_iter": r["max_iter"],
             "n_components_actual": r["n_components"],

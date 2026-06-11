@@ -1990,7 +1990,13 @@ def plot_comparator_runtime_memory(
             return float("nan"), float("nan"), float("nan")
         return float(np.median(v)), float(np.percentile(v, 25)), float(np.percentile(v, 75))
 
-    fig, (ax_rt, ax_mem) = plt.subplots(1, 2, figsize=(10.5, 4.4))
+    has_delta = "delta_memory_gb" in df.columns and df["delta_memory_gb"].notna().any()
+    has_vram = "peak_vram_gb" in df.columns and df["peak_vram_gb"].notna().any()
+    has_nvml = "nvml_peak_vram_gb" in df.columns and df["nvml_peak_vram_gb"].notna().any()
+    n_panels = 3 if has_vram else 2
+    fig, axes = plt.subplots(1, n_panels, figsize=(5.1 * n_panels, 4.4))
+    ax_rt, ax_mem = axes[0], axes[1]
+    ax_vram = axes[2] if has_vram else None
     x = np.arange(len(methods))
     rng = np.random.default_rng(0)
 
@@ -2008,18 +2014,56 @@ def plot_comparator_runtime_memory(
     ax_rt.set_ylabel("Fit runtime (s, log)")
     ax_rt.set_title("A. Fit runtime", loc="left", fontweight="bold")
 
-    # Panel B — peak memory
+    # Panel B — peak RSS (absolute) and, when present, delta RSS (fit-marginal)
+    wmem = 0.38 if has_delta else 0.62
     for i, m in enumerate(methods):
-        med, q1, q3 = _med_iqr(df.loc[df["method"] == m, "peak_memory_gb"])
-        ax_mem.bar(i, med, width=0.62, color=_color_for(m), alpha=0.85)
+        med_p, _q1p, q3p = _med_iqr(df.loc[df["method"] == m, "peak_memory_gb"])
+        offp = -wmem / 2 if has_delta else 0.0
+        ax_mem.bar(i + offp, med_p, width=wmem, color=_color_for(m), alpha=0.85)
         pts = df.loc[df["method"] == m, "peak_memory_gb"].to_numpy(dtype=float)
-        ax_mem.scatter(i + rng.uniform(-0.12, 0.12, pts.size), pts, s=16, color="#333", zorder=3)
-        if np.isfinite(med):
-            ax_mem.text(i, q3, f" {med:.2f} GB", ha="center", va="bottom", fontsize=7)
+        ax_mem.scatter(i + offp + rng.uniform(-0.10, 0.10, pts.size), pts, s=12, color="#333", zorder=3)
+        if np.isfinite(med_p):
+            ax_mem.text(i + offp, q3p, f"{med_p:.2f}", ha="center", va="bottom", fontsize=6.5)
+        if has_delta:
+            med_d, _q1d, _q3d = _med_iqr(df.loc[df["method"] == m, "delta_memory_gb"])
+            ax_mem.bar(i + wmem / 2, med_d, width=wmem, color=_color_for(m), alpha=0.40, hatch="//")
+            if np.isfinite(med_d):
+                ax_mem.text(i + wmem / 2, med_d, f"{med_d:.2f}", ha="center", va="bottom", fontsize=6.5)
     ax_mem.set_xticks(x)
     ax_mem.set_xticklabels([_display_method_name(m) for m in methods], rotation=20, ha="right")
-    ax_mem.set_ylabel("Peak memory (GB)")
-    ax_mem.set_title("B. Peak memory", loc="left", fontweight="bold")
+    ax_mem.set_ylabel("Peak RSS (GB)")
+    ax_mem.set_title(
+        "B. Peak RSS" + (" (solid=absolute, hatched=delta)" if has_delta else ""),
+        loc="left", fontweight="bold",
+    )
+
+    # Panel C — GPU VRAM (only methods that ran on GPU): allocator peak, plus the
+    # neutral NVML whole-GPU peak (which includes the CUDA-context floor) when present.
+    if has_vram:
+        gpu_methods = [
+            m for m in methods
+            if df.loc[df["method"] == m, "peak_vram_gb"].notna().any()
+        ]
+        xv = np.arange(len(gpu_methods))
+        wv = 0.38 if has_nvml else 0.60
+        for i, m in enumerate(gpu_methods):
+            med_v, _q1v, _q3v = _med_iqr(df.loc[df["method"] == m, "peak_vram_gb"])
+            offv = -wv / 2 if has_nvml else 0.0
+            ax_vram.bar(i + offv, med_v, width=wv, color=_color_for(m), alpha=0.85)
+            if np.isfinite(med_v):
+                ax_vram.text(i + offv, med_v, f"{med_v:.2f}", ha="center", va="bottom", fontsize=6.5)
+            if has_nvml:
+                med_n, _q1n, _q3n = _med_iqr(df.loc[df["method"] == m, "nvml_peak_vram_gb"])
+                ax_vram.bar(i + wv / 2, med_n, width=wv, color=_color_for(m), alpha=0.40, hatch="xx")
+                if np.isfinite(med_n):
+                    ax_vram.text(i + wv / 2, med_n, f"{med_n:.2f}", ha="center", va="bottom", fontsize=6.5)
+        ax_vram.set_xticks(xv)
+        ax_vram.set_xticklabels([_display_method_name(m) for m in gpu_methods], rotation=20, ha="right")
+        ax_vram.set_ylabel("Peak VRAM (GB)")
+        ax_vram.set_title(
+            "C. GPU VRAM" + (" (solid=allocator, hatched=NVML)" if has_nvml else ""),
+            loc="left", fontweight="bold",
+        )
 
     n_iter = (
         int(df["n_iter_actual"].median())
@@ -2040,13 +2084,20 @@ def plot_comparator_runtime_memory(
         f"{_display_method_name(m)}={'/'.join(devices[m]) or 'n/a'}" for m in methods
     )
     caption = (
-        "Implementation runtime and peak memory. "
-        + ("All methods ran on CPU at matched settings, so this is a same-hardware "
-           "comparison. " if all_cpu else "Hardware differs by method. ")
+        "Implementation runtime and memory. "
+        + ("All methods ran on CPU at matched settings (same-hardware comparison). "
+           if all_cpu else "Hardware differs by method. ")
         + "Bars are across-subject medians; dots are individual subjects. "
-        + f"Device per method: {dev_str}. "
-        + "Note: AMICA-Python's GPU acceleration is reported separately (the "
-          "comparator orchestrator pins JAX to CPU); see the convergence runs."
+        + "Panel B: absolute peak RSS"
+        + (" (solid) and delta RSS = peak minus the pre-fit baseline, the fit's "
+           "marginal footprint (hatched). " if has_delta else ". ")
+        + (("Panel C: GPU peak VRAM for the GPU-capable methods — each framework's "
+            "allocator peak (solid; XLA peak_bytes_in_use / Torch max_memory_allocated, "
+            "with preallocation & caching disabled) and the neutral NVML whole-GPU peak "
+            "(hatched), which additionally includes the fixed CUDA-context floor. VRAM "
+            "is a per-framework allocator metric, secondary to the OS-universal RSS "
+            "comparison. ") if has_vram else "")
+        + f"Device per method: {dev_str}."
     )
     captions_dir.mkdir(parents=True, exist_ok=True)
     (captions_dir / f"{stem}.txt").write_text(caption, encoding="utf-8")

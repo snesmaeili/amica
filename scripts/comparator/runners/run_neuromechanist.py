@@ -13,7 +13,7 @@ import time
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import load_data, parse_runner_args, peak_rss_gb, write_result
+from _common import baseline_rss_gb, load_data, parse_runner_args, peak_rss_gb, write_result
 
 
 def main() -> None:
@@ -21,7 +21,6 @@ def main() -> None:
     X = load_data(args.input)  # (n_components, n_samples)
     n_comp, n_samples = X.shape
 
-    _ = peak_rss_gb()
     from pyAMICA import AMICA  # neuromechanist's class
 
     model = AMICA(
@@ -43,6 +42,7 @@ def main() -> None:
         use_tqdm=False,
     )
 
+    baseline = baseline_rss_gb()
     t0 = time.perf_counter()
     model.fit(X)
     elapsed = time.perf_counter() - t0
@@ -51,13 +51,17 @@ def main() -> None:
     W = np.asarray(model.W[:, :, 0], dtype=float)
     ll = list(np.asarray(model.ll, dtype=float).flatten())
 
+    peak = peak_rss_gb()
     out = {
         "implementation": "neuromechanist_numpy",
         "n_components": int(n_comp),
         "n_samples": int(n_samples),
         "max_iter": cfg["max_iter"],
         "fit_time_s": float(elapsed),
-        "peak_rss_gb": peak_rss_gb(),
+        "peak_rss_gb": peak,
+        "baseline_rss_gb": baseline,
+        "delta_rss_gb": peak - baseline,
+        "peak_vram_gb": None,
         "ll_final": float(ll[-1]) if ll else float("nan"),
         "ll_history": ll,
         "W": W.tolist(),
