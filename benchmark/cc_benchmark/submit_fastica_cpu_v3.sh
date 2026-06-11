@@ -6,8 +6,8 @@
 #SBATCH --time=01:00:00
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=4
-#SBATCH --output=/home/sesma/scratch/v3_fastica_%a_%j.out
-#SBATCH --error=/home/sesma/scratch/v3_fastica_%a_%j.err
+#SBATCH --output=%x-%A_%a.out
+#SBATCH --error=%x-%A_%a.err
 
 set -euo pipefail
 
@@ -15,7 +15,7 @@ cd "$SLURM_SUBMIT_DIR"
 
 source fir_env.sh
 
-export AMICA_RESULTS_DIR="${V3_RESULTS_DIR:-/scratch/$USER/amica_python_validation_v3}"
+export AMICA_RESULTS_DIR="${V3_RESULTS_DIR:-$AMICA_RESULTS_DIR}"
 export AMICA_COMPUTE_DIPOLES="${AMICA_COMPUTE_DIPOLES:-1}"
 mkdir -p "$AMICA_RESULTS_DIR"
 
@@ -26,7 +26,7 @@ python -m amica_python.benchmark.comparators \
     --method fastica \
     --bids-root "$BIDS_ROOT_DS4505" \
     --output-dir "$AMICA_RESULTS_DIR" \
-    --input-level bids \
+    --input-level "${AMICA_INPUT_LEVEL:-bids}" \
     --n-components 64 \
     --random-state 42 \
     --max-iter 5000

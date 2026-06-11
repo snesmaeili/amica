@@ -10,6 +10,31 @@ regenerate them from source data.
 
 ---
 
+## Quickstart — reproduce the cluster benchmark (any Alliance/Compute-Canada user)
+
+The benchmark CSVs from the paper run are committed under
+`benchmark/cc_benchmark/results/v3_paper_stage1_cluster/`, so you can **render the
+data figures on a laptop with no GPU/cluster** (Steps 6–7 below). To re-run the full
+6-method × 25-subject benchmark on a cluster and regenerate those CSVs:
+
+```bash
+pip install -e ".[all]"                          # + jax[cuda12] for the GPU backend
+cd benchmark/cc_benchmark
+cp env.template env.local                        # edit: your allocation, GPU, data path
+module load git-annex && bash download_ds004505.sh   # ~10 GB public OpenNeuro data
+bash submit_all.sh                               # smoke gate -> 6 sbatch arrays
+# when all arrays finish:
+python -m amica_python.benchmark.aggregate \
+    --results-dir "$AMICA_RESULTS_DIR" --output-dir "$AMICA_RESULTS_DIR"
+# then render figures from the CSVs (Step 7). fig 8 (convergence) needs the trace:
+gunzip -k results/v3_paper_stage1_cluster/iteration_trace.csv.gz
+```
+
+Edit only `env.local` (allocation / GPU type / data path). `submit_all.sh` passes
+those to `sbatch`, overriding the fir (H100) defaults baked into each script.
+
+---
+
 ## Quick reference: figure → script map
 
 | Fig | File | Generating script | Input data |
@@ -267,8 +292,9 @@ Copy the results directory to
 ## Step 6 — Aggregate benchmark JSONs → CSVs
 
 ```bash
-python benchmark/cc_benchmark/aggregate_results.py \
-    --results-dir benchmark/cc_benchmark/results/v3_paper_stage1_cluster
+python -m amica_python.benchmark.aggregate \
+    --results-dir benchmark/cc_benchmark/results/v3_paper_stage1_cluster \
+    --output-dir  benchmark/cc_benchmark/results/v3_paper_stage1_cluster
 ```
 
 Produces three files in that directory:

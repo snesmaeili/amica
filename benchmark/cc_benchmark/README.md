@@ -81,8 +81,12 @@ done
 ### Aggregate results into CSVs
 
 ```bash
-.venv/bin/python scripts/cc_benchmark/aggregate_results.py --results-dir ./local_results
+python -m amica_python.benchmark.aggregate \
+    --results-dir ./local_results --output-dir ./local_results
 ```
+
+This writes the three CSVs the figure scripts consume: `benchmark_results.csv`,
+`component_metrics.csv`, `iteration_trace.csv`.
 
 ---
 

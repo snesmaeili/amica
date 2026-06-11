@@ -6,8 +6,8 @@
 #SBATCH --time=06:00:00
 #SBATCH --mem=48G
 #SBATCH --cpus-per-task=8
-#SBATCH --output=/home/sesma/scratch/v3_jax_cpu_%a_%j.out
-#SBATCH --error=/home/sesma/scratch/v3_jax_cpu_%a_%j.err
+#SBATCH --output=%x-%A_%a.out
+#SBATCH --error=%x-%A_%a.err
 
 set -euo pipefail
 
@@ -17,7 +17,7 @@ source fir_env.sh
 
 export AMICA_N_ITER="${AMICA_N_ITER:-3000}"
 export AMICA_COMPUTE_DIPOLES="${AMICA_COMPUTE_DIPOLES:-1}"
-export AMICA_RESULTS_DIR="${V3_RESULTS_DIR:-/scratch/$USER/amica_python_validation_v3}"
+export AMICA_RESULTS_DIR="${V3_RESULTS_DIR:-$AMICA_RESULTS_DIR}"
 mkdir -p "$AMICA_RESULTS_DIR"
 
 python run_one_subject.py \
@@ -26,5 +26,5 @@ python run_one_subject.py \
     --backend jax \
     --device cpu \
     --n-iter "$AMICA_N_ITER" \
-    --input-level bids \
+    --input-level "${AMICA_INPUT_LEVEL:-bids}" \
     --schema-version v3
