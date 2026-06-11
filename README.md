@@ -51,15 +51,19 @@ ica.plot_components()
 ica.apply(raw)
 ```
 
-### Picard-compatible Functional API
+### Functional API
 
-For drop-in replacement in custom ICA pipelines:
+A lower-level functional form, used internally by MNE's `method="amica"`
+dispatch. It returns unmixing/source matrices (`K` is unused — kept only for the
+MNE ICA-method signature). For the full AMICA result — mixture models and
+source-density parameters (α, μ, β, ρ) — use `Amica(...).fit()`, which returns
+an `AmicaResult`.
 
 ```python
 from amica_python import amica
 
-# X: (n_features, n_samples) — same convention as picard
-K, W, Y = amica(X)
+# X: (n_features, n_samples), features x samples
+K, W, Y = amica(X)                              # K is None; W = unmixing, Y = sources
 K, W, Y, n_iter = amica(X, return_n_iter=True)
 ```
 
