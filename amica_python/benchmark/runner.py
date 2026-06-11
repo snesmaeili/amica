@@ -924,9 +924,12 @@ def _measure_peak_memory(backend, device, fn, /, *args, **kwargs):
         duration_s      — wall-clock seconds
         peak_cpu_ram_gb — Python-level peak (tracemalloc); accurate for NumPy,
                           undercounts for JAX (XLA bypasses Python allocator)
+        peak_rss_gb     — process peak resident-set size (resource.getrusage
+                          ru_maxrss): the TRUE host-memory high-water-mark,
+                          including XLA/BLAS arenas. None if unavailable (Windows).
         peak_vram_gb    — GPU peak from XLA memory_stats(); None on CPU/non-JAX
-        peak_memory_gb  — peak_vram_gb if available, else peak_cpu_ram_gb;
-                          convenience field for downstream aggregation
+        peak_memory_gb  — peak_vram_gb on GPU; else peak_rss_gb (accurate); else
+                          peak_cpu_ram_gb. Convenience field for aggregation.
     """
     use_jax_gpu = (backend == "jax" and device == "gpu")
 
@@ -950,6 +953,19 @@ def _measure_peak_memory(backend, device, fn, /, *args, **kwargs):
 
     peak_cpu_ram_gb = float(peak_bytes) / (1024 ** 3)
 
+    # True host-memory peak: process resident-set high-water-mark, which (unlike
+    # tracemalloc) includes XLA/BLAS allocations made outside the Python heap.
+    # ru_maxrss is KiB on Linux, bytes on macOS; unavailable on Windows.
+    peak_rss_gb = None
+    try:
+        import resource
+        import sys as _sys
+        _ru = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        _div = 1024 ** 3 if _sys.platform == "darwin" else 1024 ** 2
+        peak_rss_gb = float(_ru) / _div
+    except Exception:
+        pass
+
     peak_vram_gb = None
     if jax_dev is not None:
         try:
@@ -959,12 +975,22 @@ def _measure_peak_memory(backend, device, fn, /, *args, **kwargs):
         except Exception:
             pass
 
+    # VRAM on GPU; otherwise the accurate process RSS, falling back to the
+    # (JAX-undercounting) tracemalloc value only if RSS is unavailable.
+    if peak_vram_gb is not None:
+        peak_memory_gb = peak_vram_gb
+    elif peak_rss_gb is not None:
+        peak_memory_gb = peak_rss_gb
+    else:
+        peak_memory_gb = peak_cpu_ram_gb
+
     return {
         "result": result,
         "duration_s": duration,
         "peak_cpu_ram_gb": peak_cpu_ram_gb,
+        "peak_rss_gb": peak_rss_gb,
         "peak_vram_gb": peak_vram_gb,
-        "peak_memory_gb": peak_vram_gb if peak_vram_gb is not None else peak_cpu_ram_gb,
+        "peak_memory_gb": peak_memory_gb,
     }
 
 
@@ -1051,6 +1077,7 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
         "converged_before_cap": bool(converged_amica_flag and n_iter_actual < int(n_iter)),
         "peak_memory_gb": peak_memory_gb,
         "peak_cpu_ram_gb": mem["peak_cpu_ram_gb"],
+        "peak_rss_gb": mem["peak_rss_gb"],
         "peak_vram_gb": mem["peak_vram_gb"],
         "n_components": int(n_components),
         "n_channels": int(len(raw.ch_names)),
