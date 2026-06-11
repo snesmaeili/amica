@@ -80,8 +80,9 @@ def main() -> None:
     )
 
     cmd = [gnu_time, "-v", mpirun, "-np", "1", amica_bin, str(workdir / "amica.param")]
+    run_env = dict(os.environ, OMP_NUM_THREADS="1")  # match parity recipe (param max_threads=1)
     t0 = time.perf_counter()
-    cp = subprocess.run(cmd, capture_output=True, text=True)
+    cp = subprocess.run(cmd, capture_output=True, text=True, env=run_env)
     elapsed = time.perf_counter() - t0
 
     maxrss_kb = _parse_maxrss_kb(cp.stderr)

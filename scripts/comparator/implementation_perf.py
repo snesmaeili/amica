@@ -72,18 +72,21 @@ def preprocess_ds004505_subject(
     duration_sec: float | None = None,
     resample_sfreq: float | None = 250.0,
     seed: int = 0,
+    input_level: str = "bids",
 ) -> tuple[np.ndarray, dict]:
     """Mirror yorguin's runner preprocessing for ds004505 and return (n_comp, n_samples).
 
-    Pipeline: load merged .set -> exclude non-scalp channels -> apply analysis
-    window (optional crop + resample) -> 1-100 Hz bandpass + 60 Hz notch
-    -> sklearn PCA to n_components -> per-component variance normalisation.
+    Pipeline: load .set (input_level: 'bids' = raw_bids/sub-NN, all 25 valid and what
+    BIDS_ROOT_DS4505 points to; 'merged' = sourcedata Merged, only sub-01..04) ->
+    exclude non-scalp channels -> apply analysis window (optional crop + resample)
+    -> 1-100 Hz bandpass + 60 Hz notch -> sklearn PCA to n_components -> per-component
+    variance normalisation.
     """
     from amica_python.benchmark import runner as amica_runner  # type: ignore
     from sklearn.decomposition import PCA
 
     raw, metadata = amica_runner.load_data(
-        "ds004505", subject_id, input_level="merged", return_metadata=True
+        "ds004505", subject_id, input_level=input_level, return_metadata=True
     )
     if duration_sec is not None or resample_sfreq is not None:
         amica_runner.apply_analysis_window(
@@ -255,6 +258,10 @@ def main() -> None:
                         help="Source data: 'mne_sample' for 60-ch dev smoke or 'ds004505' for full pipeline.")
     parser.add_argument("--subject", type=int, default=4,
                         help="ds004505 subject id (ignored for mne_sample)")
+    parser.add_argument("--input-level", choices=["bids", "merged"], default="bids",
+                        help="ds004505 layout: 'bids' (raw_bids/sub-NN, all 25 valid, matches "
+                             "BIDS_ROOT_DS4505) or 'merged' (sourcedata Merged, only sub-01..04). "
+                             "Default 'bids'.")
     parser.add_argument("--duration-sec", type=float, default=None,
                         help="Optional crop of ds004505 input to first N seconds")
     parser.add_argument("--resample-sfreq", type=float, default=250.0,
@@ -287,6 +294,7 @@ def main() -> None:
             duration_sec=args.duration_sec,
             resample_sfreq=args.resample_sfreq,
             seed=seeds[0],
+            input_level=args.input_level,
         )
         subject_tag = f"sub-{args.subject:02d}"
     else:
