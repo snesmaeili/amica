@@ -67,8 +67,8 @@ def main() -> None:
     model.fit(Xt)
     elapsed = time.perf_counter() - t0
 
-    # Torch device peak: bytes in live tensors (max_memory_allocated, NOT the
-    # cached reserve), captured with PYTORCH_NO_CUDA_MEMORY_CACHING=1 by the orchestrator.
+    # Torch device peak: bytes in live tensors (max_memory_allocated = true demand, NOT the
+    # cached/reserved pool). The caching allocator stays ON so this counter is tracked.
     peak_vram_gb = None
     if device == "cuda" and torch.cuda.is_available():
         torch.cuda.synchronize()
