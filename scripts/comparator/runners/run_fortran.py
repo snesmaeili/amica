@@ -66,8 +66,10 @@ def main() -> None:
         outdir=str(out_dir) + "/",
         n_channels=n_comp, n_samples=n_samples,
         block_size=min(int(n_samples), 100000),
-        # input is already projected + variance-normalised by the orchestrator:
-        do_sphere=0, do_mean=0, doPCA=0, pcakeep=n_comp,
+        # Run amica17's standard sphere/mean/PCA path (the validated parity config). On the
+        # already-projected, unit-variance input, PCA(pcakeep=n_comp) is just a rotation. NOTE:
+        # do_sphere=0/doPCA=0 makes amica17 exit at init with 0 iterations.
+        do_sphere=1, do_mean=1, doPCA=1, pcakeep=n_comp,
         # same hyperparameters as the Python runners (base_cfg):
         num_mix_comps=n_mix,
         max_iter=cfg["max_iter"],
