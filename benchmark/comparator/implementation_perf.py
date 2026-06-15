@@ -40,8 +40,11 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[2]  # amica-python repo root
-RESULTS_DIR = ROOT / "results" / "comparator"
-RUNNERS_DIR = ROOT / "benchmark" / "comparator" / "runners"
+# Results dir is env-overridable (AMICA_COMPARATOR_RESULTS) so the capsule scripts can
+# point it at $SCRATCH; the runner scripts always live next to this file (location-robust,
+# so this works whether the comparator sits in scripts/comparator/ or benchmark/comparator/).
+RESULTS_DIR = Path(os.environ.get("AMICA_COMPARATOR_RESULTS", str(ROOT / "results" / "comparator")))
+RUNNERS_DIR = Path(__file__).resolve().parent / "runners"
 
 # Venv pythons. Override either via env vars for portability between machines:
 #   AMICA_PYTHON_VENV   — path to amica-python's venv python
@@ -61,7 +64,7 @@ VENV_AMICA = Path(os.environ.get("AMICA_PYTHON_VENV", str(_amica_default)))
 VENV_COMPETITORS = Path(os.environ.get("COMPETITORS_VENV", str(_competitors_default)))
 
 # Make `import amica_python.benchmark.runner` work even when this script is run
-# without a `pip install -e .` (e.g., direct `python benchmark/comparator/X.py`).
+# without a `pip install -e .` (e.g., direct `python scripts/comparator/X.py`).
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -72,18 +75,21 @@ def preprocess_ds004505_subject(
     duration_sec: float | None = None,
     resample_sfreq: float | None = 250.0,
     seed: int = 0,
+    input_level: str = "bids",
 ) -> tuple[np.ndarray, dict]:
     """Mirror yorguin's runner preprocessing for ds004505 and return (n_comp, n_samples).
 
-    Pipeline: load merged .set -> exclude non-scalp channels -> apply analysis
-    window (optional crop + resample) -> 1-100 Hz bandpass + 60 Hz notch
-    -> sklearn PCA to n_components -> per-component variance normalisation.
+    Pipeline: load .set (input_level: 'bids' = raw_bids/sub-NN, all 25 valid and what
+    BIDS_ROOT_DS4505 points to; 'merged' = sourcedata Merged, only sub-01..04) ->
+    exclude non-scalp channels -> apply analysis window (optional crop + resample)
+    -> 1-100 Hz bandpass + 60 Hz notch -> sklearn PCA to n_components -> per-component
+    variance normalisation.
     """
     from amica_python.benchmark import runner as amica_runner  # type: ignore
     from sklearn.decomposition import PCA
 
     raw, metadata = amica_runner.load_data(
-        "ds004505", subject_id, input_level="merged", return_metadata=True
+        "ds004505", subject_id, input_level=input_level, return_metadata=True
     )
     if duration_sec is not None or resample_sfreq is not None:
         amica_runner.apply_analysis_window(
@@ -200,7 +206,8 @@ def _aggregate_per_impl(seed_results: list[dict]) -> dict:
     if not valid:
         out["error"] = "all seeds failed"
         return out
-    for key in ("fit_time_s", "peak_rss_gb", "ll_final", "n_iter"):
+    for key in ("fit_time_s", "peak_rss_gb", "baseline_rss_gb", "delta_rss_gb",
+                "peak_vram_gb", "nvml_peak_vram_gb", "ll_final", "n_iter"):
         vals = [r[key] for r in valid if key in r and r[key] is not None]
         if vals:
             out[f"{key}_mean"] = float(np.mean(vals))
@@ -238,10 +245,30 @@ def main() -> None:
                              "for that runner so it actually uses the allocated GPU (the competitors "
                              "are torch/numpy and always run on CPU). Default 'cpu' keeps a "
                              "same-hardware comparison.")
+    parser.add_argument("--competitor-device", choices=["cpu", "gpu"], default="cpu",
+                        help="Device for the PyTorch competitors (pyamica, scott_huberty). 'gpu' sets "
+                             "TORCH_DEVICE=cuda + PYTORCH_NO_CUDA_MEMORY_CACHING=1 so "
+                             "torch.cuda.max_memory_allocated() reflects true demand. neuromechanist "
+                             "(NumPy) and fortran always run on CPU. Default 'cpu'.")
+    parser.add_argument("--include-fortran", action="store_true",
+                        help="Also run Fortran AMICA 1.7 (run_fortran.py) on the same projected input "
+                             "for the CPU/RSS comparison. Requires AMICA17_BIN + mpirun (cluster only).")
+    parser.add_argument("--nvml-crosscheck", action="store_true",
+                        help="On GPU runs, also sample whole-GPU 'used' VRAM via NVML (neutral "
+                             "cross-check incl. the CUDA-context floor the allocator counters omit). "
+                             "Requires pynvml; silently None if absent. Valid only on a dedicated GPU.")
+    parser.add_argument("--amica-chunk-size", default="auto",
+                        help="chunk_size for the amica_python_jax_chunked run (the frugal/GPU config): "
+                             "'auto' (VRAM/RAM-aware) or an integer. Default 'auto'. The full-batch "
+                             "amica_python_jax run always uses chunk_size=None.")
     parser.add_argument("--dataset", choices=["mne_sample", "ds004505"], default="mne_sample",
                         help="Source data: 'mne_sample' for 60-ch dev smoke or 'ds004505' for full pipeline.")
     parser.add_argument("--subject", type=int, default=4,
                         help="ds004505 subject id (ignored for mne_sample)")
+    parser.add_argument("--input-level", choices=["bids", "merged"], default="bids",
+                        help="ds004505 layout: 'bids' (raw_bids/sub-NN, all 25 valid, matches "
+                             "BIDS_ROOT_DS4505) or 'merged' (sourcedata Merged, only sub-01..04). "
+                             "Default 'bids'.")
     parser.add_argument("--duration-sec", type=float, default=None,
                         help="Optional crop of ds004505 input to first N seconds")
     parser.add_argument("--resample-sfreq", type=float, default=250.0,
@@ -274,6 +301,7 @@ def main() -> None:
             duration_sec=args.duration_sec,
             resample_sfreq=args.resample_sfreq,
             seed=seeds[0],
+            input_level=args.input_level,
         )
         subject_tag = f"sub-{args.subject:02d}"
     else:
@@ -290,17 +318,42 @@ def main() -> None:
         do_newton=True,
     )
 
-    # 2. Define the 5 runs (name, venv, runner script, env_extra)
-    # amica_python_jax uses the GPU only when --amica-device gpu; run_subprocess
-    # otherwise pins JAX_PLATFORMS=cpu, so this env_extra is what flips it to CUDA.
-    _amica_jax_env = {"JAX_PLATFORMS": "cuda"} if args.amica_device == "gpu" else None
+    # 2. Define the runs (name, venv, runner script, env_extra). run_subprocess pins
+    #    JAX_PLATFORMS=cpu by default, so the env_extra dicts below flip device + the
+    #    allocator settings that make the memory numbers clean.
+    # Device/allocator env shared by both AMICA runs (GPU only when --amica-device gpu;
+    #    XLA prealloc off so peak_bytes_in_use reflects true demand, not the 75% pool grab).
+    _amica_env: dict = {}
+    if args.amica_device == "gpu":
+        _amica_env = {"JAX_PLATFORMS": "cuda", "XLA_PYTHON_CLIENT_PREALLOCATE": "false"}
+    # Torch competitors: GPU only when --competitor-device gpu; caching allocator off
+    #    so max_memory_allocated + a neutral NVML reading reflect true demand.
+    _torch_env: dict = {}
+    if args.competitor_device == "gpu":
+        _torch_env = {"TORCH_DEVICE": "cuda", "PYTORCH_NO_CUDA_MEMORY_CACHING": "1"}
+    if args.nvml_crosscheck:
+        _amica_env["AMICA_NVML_CROSSCHECK"] = "1"
+        _torch_env["AMICA_NVML_CROSSCHECK"] = "1"
+    # Full-batch AMICA gets the device env as-is; chunked AMICA adds AMICA_CHUNK_SIZE
+    #    (VRAM-aware on GPU = the paper config; the frugal end of the dial on CPU).
+    _amica_fb_env = dict(_amica_env) or None
+    _amica_chunked_env = dict(_amica_env)
+    _amica_chunked_env["AMICA_CHUNK_SIZE"] = str(args.amica_chunk_size)
+    _torch_env = _torch_env or None
+
     runs = [
-        ("amica_python_jax",     VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   _amica_jax_env),
-        ("amica_python_numpy",   VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   {"AMICA_NO_JAX": "1"}),
-        ("pyamica_torch",        VENV_COMPETITORS,  RUNNERS_DIR / "run_pyamica.py",        None),
-        ("scott_huberty_torch",  VENV_COMPETITORS,  RUNNERS_DIR / "run_scott_huberty.py",  None),
-        ("neuromechanist_numpy", VENV_COMPETITORS,  RUNNERS_DIR / "run_neuromechanist.py", None),
+        ("amica_python_jax",         VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   _amica_fb_env),
+        ("amica_python_jax_chunked", VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   _amica_chunked_env),
+        ("amica_python_numpy",       VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   {"AMICA_NO_JAX": "1"}),
+        ("pyamica_torch",            VENV_COMPETITORS,  RUNNERS_DIR / "run_pyamica.py",        _torch_env),
+        ("scott_huberty_torch",      VENV_COMPETITORS,  RUNNERS_DIR / "run_scott_huberty.py",  _torch_env),
+        ("neuromechanist_numpy",     VENV_COMPETITORS,  RUNNERS_DIR / "run_neuromechanist.py", None),
     ]
+    # Fortran AMICA 1.7 on the same projected input (CPU/RSS only; binary on the cluster).
+    if args.include_fortran:
+        runs.append(
+            ("fortran_amica17",      VENV_AMICA,        RUNNERS_DIR / "run_fortran.py",        None)
+        )
 
     # 3. Run each (impl × seed)
     summary: dict = {
@@ -335,17 +388,20 @@ def main() -> None:
 
     # 4. Per-impl aggregated table
     print()
-    print(f"{'impl':<24} {'time mean±std':>20} {'rss mean±std':>20} {'ll mean±std':>22} {'iters':>10}")
-    print("-" * 100)
+    print(f"{'impl':<22} {'time s':>10} {'peak GB':>10} {'delta GB':>10} "
+          f"{'vram GB':>10} {'nvml GB':>10} {'iters':>8}")
+    print("-" * 84)
     for name, agg in summary["aggregated"].items():
         if agg.get("error"):
-            print(f"{name:<24} {'(all seeds failed)':>20}")
+            print(f"{name:<22} {'(all seeds failed)':>10}")
             continue
-        t = f"{agg.get('fit_time_s_mean', 0):.2f}±{agg.get('fit_time_s_std', 0):.2f}"
-        r = f"{agg.get('peak_rss_gb_mean', 0):.2f}±{agg.get('peak_rss_gb_std', 0):.2f}"
-        ll = f"{agg.get('ll_final_mean', 0):.4f}±{agg.get('ll_final_std', 0):.4e}"
-        it = f"{agg.get('n_iter_mean', 0):.0f}±{agg.get('n_iter_std', 0):.0f}"
-        print(f"{name:<24} {t:>20} {r:>20} {ll:>22} {it:>10}")
+        t = f"{agg.get('fit_time_s_mean', 0):.2f}"
+        r = f"{agg.get('peak_rss_gb_mean', 0):.2f}"
+        d = f"{agg.get('delta_rss_gb_mean', 0):.2f}"
+        v = f"{agg['peak_vram_gb_mean']:.2f}" if agg.get('peak_vram_gb_mean') is not None else "-"
+        nv = f"{agg['nvml_peak_vram_gb_mean']:.2f}" if agg.get('nvml_peak_vram_gb_mean') is not None else "-"
+        it = f"{agg.get('n_iter_mean', 0):.0f}"
+        print(f"{name:<22} {t:>10} {r:>10} {d:>10} {v:>10} {nv:>10} {it:>8}")
 
     # 5. Pairwise W correlations per seed, plus mean across seeds
     impl_names = sorted(summary["results"].keys())

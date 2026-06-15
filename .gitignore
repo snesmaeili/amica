@@ -88,6 +88,9 @@ logs/
 tmpdata*.fdt
 slurm-*.out
 slurm-*.err
+# cwd-relative job logs from the cc_benchmark submit scripts (%x-%j / %x-%A_%a)
+benchmark/cc_benchmark/*.out
+benchmark/cc_benchmark/*.err
 *.f90
 
 # Per-user cluster config (see benchmark/cc_benchmark/env.template)

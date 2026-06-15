@@ -18,6 +18,46 @@ Results land in `$AMICA_RESULTS_DIR` (defaults to `$SCRATCH/amica_python_validat
 
 ---
 
+## Cross-implementation memory comparison (AMICA vs the other AMICA implementations)
+
+`submit_mem_compare.sh` (CPU peak RSS) and `submit_mem_gpu.sh` (GPU peak VRAM) compare
+AMICA-Python's memory against the other AMICA reimplementations — **pyamica**
+(DerAndereJohannes), **scott-huberty/amica**, **neuromechanist/pyAMICA**, and optionally the
+reference **Fortran AMICA 1.7**. AMICA-Python is measured in **both** configs (full-batch and
+chunked = its memory/speed dial). Peak RSS uses the `resource.getrusage` high-water mark; GPU
+VRAM uses each framework's allocator peak (XLA `peak_bytes_in_use` / torch
+`max_memory_allocated`) with preallocation/caching disabled. Memory is iteration-independent,
+so the comparison runs **1 subject at ~100 iter**.
+
+```bash
+# 0) one-time: build the competitors venv (.venv_competitors) on the LOGIN node (an env build)
+bash setup_competitors.sh
+
+# 1) configure (account / BIDS_ROOT / dataset / subject) in env.local
+cp env.template env.local && nano env.local
+
+# 2) submit (fir #SBATCH defaults; override per-site with `sbatch --account=... --partition=... --gres=...`)
+sbatch submit_mem_compare.sh    # CPU: AMICA full-batch + chunked, pyamica, scott, neuromechanist[, Fortran]
+sbatch submit_mem_gpu.sh        # GPU: AMICA-JAX(auto) vs pyamica vs scott (VRAM)
+```
+
+- **Dataset is configurable** via `AMICA_MEM_DATASET`: `mne_sample` for a zero-setup run any
+  user can do immediately (MNE auto-downloads the sample), or `ds004505` for the paper data.
+  `AMICA_MEM_SUBJECT` / `AMICA_MEM_NCOMP` / `AMICA_MEM_ITER` / `AMICA_MEM_CHUNK` tune the run.
+- **Fortran is optional**: export `AMICA17_BIN=/path/to/amica17` (built with `openmpi` +
+  `flexiblas`) to include it; otherwise it is skipped.
+- CPU results land under `…/comparator/cpu/`, GPU under `…/comparator/gpu/`.
+- **Aggregate + figure run locally** (the cluster is compute-only) — `rsync` the JSONs back, then:
+
+  ```bash
+  python benchmark/comparator/aggregate_pilot.py --root <results>/comparator/cpu --impls all
+  python benchmark/comparator/plot_pilot.py      --root <results>/comparator/cpu
+  ```
+
+  producing the runtime + peak-RSS (absolute/delta) + VRAM figure (fig12) and the per-impl CSVs.
+
+---
+
 ## Locally (e.g. RTX 4070)
 
 The runner is a normal Python script — no SLURM needed.
