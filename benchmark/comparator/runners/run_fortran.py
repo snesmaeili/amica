@@ -8,9 +8,10 @@ back for the Hungarian-parity sanity. Fortran is CPU-only and allocates its work
 arrays up front with a ~zero import baseline, so absolute peak RSS ~= delta RSS;
 peak_vram_gb is None.
 
-To match the comparator's pre-projected, variance-normalised input (the Python
-runners use do_sphere=False / do_mean=False), the Fortran side also skips sphering,
-mean removal and PCA, and uses the SAME hyperparameters passed in --config.
+amica17 runs its standard sphere/mean/PCA path (do_sphere=1/do_mean=1/doPCA=1, pcakeep=n_comp)
+on the comparator's pre-projected input — PCA there is just a rotation, and this is the validated
+parity config (do_sphere=0/doPCA=0 makes amica17 exit at init with 0 iterations). Same
+hyperparameters as the Python runners are passed in --config.
 
 Environment (cluster):
   AMICA17_BIN   path to amica17 (default the validated reference build below)
@@ -66,8 +67,10 @@ def main() -> None:
         outdir=str(out_dir) + "/",
         n_channels=n_comp, n_samples=n_samples,
         block_size=min(int(n_samples), 100000),
-        # input is already projected + variance-normalised by the orchestrator:
-        do_sphere=0, do_mean=0, doPCA=0, pcakeep=n_comp,
+        # Run amica17's standard sphere/mean/PCA path (the validated parity config). On the
+        # already-projected, unit-variance input, PCA(pcakeep=n_comp) is just a rotation. NOTE:
+        # do_sphere=0/doPCA=0 makes amica17 exit at init with 0 iterations.
+        do_sphere=1, do_mean=1, doPCA=1, pcakeep=n_comp,
         # same hyperparameters as the Python runners (base_cfg):
         num_mix_comps=n_mix,
         max_iter=cfg["max_iter"],
