@@ -47,7 +47,10 @@ def parse_runner_args() -> tuple[argparse.Namespace, dict]:
 
 def load_data(input_path: str) -> np.ndarray:
     z = np.load(input_path)
-    X = z["X"].astype(np.float64)
+    # asarray (not .astype) avoids a needless full copy when X is already float64 —
+    # that copy otherwise creates a transient np.load RSS spike that, via the
+    # monotonic high-water mark, inflates the pre-fit baseline for every impl.
+    X = np.asarray(z["X"], dtype=np.float64)
     return X  # (n_components, n_samples)
 
 

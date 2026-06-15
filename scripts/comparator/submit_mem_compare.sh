@@ -6,7 +6,7 @@
 # aggregate + figure are run LOCALLY after rsync (the cluster is compute-only).
 #SBATCH --job-name=amica_mem_compare
 #SBATCH --account=def-kjerbi
-#SBATCH --time=0:45:00
+#SBATCH --time=02:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=40G
@@ -33,11 +33,14 @@ echo "amica17: $AMICA17_BIN"; ls -l "$AMICA17_BIN"
 echo "BIDS   : ${BIDS_ROOT_DS4505:-unset}"
 echo "threads: OMP=${OMP_NUM_THREADS:-unset} (run_fortran forces OMP=1 for amica17)"
 
-echo "=== run comparator: 5 impls (amica-jax CPU, pyamica, scott, neuromechanist, fortran) ==="
+echo "=== run comparator: 6 impls (amica-jax full-batch + chunked, pyamica, scott, neuromechanist, fortran) ==="
+# amica_python_jax_chunked (chunk_size=auto) is added automatically by the orchestrator;
+# it is the frugal end of AMICA's CPU memory dial vs the default full-batch amica_python_jax.
 python scripts/comparator/implementation_perf.py \
     --dataset ds004505 --subject 1 --input-level bids \
     --n-components 64 --max-iter 100 \
     --amica-device cpu --competitor-device cpu \
+    --amica-chunk-size auto \
     --include-fortran \
     --skip amica_python_numpy \
     --out-tag ds004505_sub-01_mem

@@ -30,7 +30,20 @@ def main() -> None:
     n_comp, n_samples = X.shape
 
     no_jax = os.environ.get("AMICA_NO_JAX", "0") == "1"
-    impl = "amica_python_numpy" if no_jax else "amica_python_jax"
+    # chunk_size from env: "auto" (VRAM/RAM-aware) or an integer; unset -> None (full-batch).
+    _chunk_env = os.environ.get("AMICA_CHUNK_SIZE", "").strip()
+    if _chunk_env.lower() == "auto":
+        chunk_size = "auto"
+    elif _chunk_env:
+        chunk_size = int(_chunk_env)
+    else:
+        chunk_size = None
+    if no_jax:
+        impl = "amica_python_numpy"
+    elif chunk_size is not None:
+        impl = "amica_python_jax_chunked"
+    else:
+        impl = "amica_python_jax"
 
     from amica_python import Amica, AmicaConfig
 
@@ -53,6 +66,7 @@ def main() -> None:
         do_newton=cfg.get("do_newton", True),
         do_sphere=False,    # already PCA-projected by orchestrator
         do_mean=False,
+        chunk_size=chunk_size,   # None = full-batch; "auto"/int = chunked (lower peak memory)
     )
     model = Amica(config, random_state=cfg.get("seed", 0))
 

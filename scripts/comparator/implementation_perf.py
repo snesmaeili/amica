@@ -254,6 +254,10 @@ def main() -> None:
                         help="On GPU runs, also sample whole-GPU 'used' VRAM via NVML (neutral "
                              "cross-check incl. the CUDA-context floor the allocator counters omit). "
                              "Requires pynvml; silently None if absent. Valid only on a dedicated GPU.")
+    parser.add_argument("--amica-chunk-size", default="auto",
+                        help="chunk_size for the amica_python_jax_chunked run (the frugal/GPU config): "
+                             "'auto' (VRAM/RAM-aware) or an integer. Default 'auto'. The full-batch "
+                             "amica_python_jax run always uses chunk_size=None.")
     parser.add_argument("--dataset", choices=["mne_sample", "ds004505"], default="mne_sample",
                         help="Source data: 'mne_sample' for 60-ch dev smoke or 'ds004505' for full pipeline.")
     parser.add_argument("--subject", type=int, default=4,
@@ -314,33 +318,38 @@ def main() -> None:
     # 2. Define the runs (name, venv, runner script, env_extra). run_subprocess pins
     #    JAX_PLATFORMS=cpu by default, so the env_extra dicts below flip device + the
     #    allocator settings that make the memory numbers clean.
-    # amica_python_jax: GPU only when --amica-device gpu; XLA prealloc off so
-    #    peak_bytes_in_use reflects true demand (not the 75% pool grab).
-    _amica_jax_env: dict = {}
+    # Device/allocator env shared by both AMICA runs (GPU only when --amica-device gpu;
+    #    XLA prealloc off so peak_bytes_in_use reflects true demand, not the 75% pool grab).
+    _amica_env: dict = {}
     if args.amica_device == "gpu":
-        _amica_jax_env = {"JAX_PLATFORMS": "cuda", "XLA_PYTHON_CLIENT_PREALLOCATE": "false"}
+        _amica_env = {"JAX_PLATFORMS": "cuda", "XLA_PYTHON_CLIENT_PREALLOCATE": "false"}
     # Torch competitors: GPU only when --competitor-device gpu; caching allocator off
     #    so max_memory_allocated + a neutral NVML reading reflect true demand.
     _torch_env: dict = {}
     if args.competitor_device == "gpu":
         _torch_env = {"TORCH_DEVICE": "cuda", "PYTORCH_NO_CUDA_MEMORY_CACHING": "1"}
     if args.nvml_crosscheck:
-        _amica_jax_env["AMICA_NVML_CROSSCHECK"] = "1"
+        _amica_env["AMICA_NVML_CROSSCHECK"] = "1"
         _torch_env["AMICA_NVML_CROSSCHECK"] = "1"
-    _amica_jax_env = _amica_jax_env or None
+    # Full-batch AMICA gets the device env as-is; chunked AMICA adds AMICA_CHUNK_SIZE
+    #    (VRAM-aware on GPU = the paper config; the frugal end of the dial on CPU).
+    _amica_fb_env = dict(_amica_env) or None
+    _amica_chunked_env = dict(_amica_env)
+    _amica_chunked_env["AMICA_CHUNK_SIZE"] = str(args.amica_chunk_size)
     _torch_env = _torch_env or None
 
     runs = [
-        ("amica_python_jax",     VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   _amica_jax_env),
-        ("amica_python_numpy",   VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   {"AMICA_NO_JAX": "1"}),
-        ("pyamica_torch",        VENV_COMPETITORS,  RUNNERS_DIR / "run_pyamica.py",        _torch_env),
-        ("scott_huberty_torch",  VENV_COMPETITORS,  RUNNERS_DIR / "run_scott_huberty.py",  _torch_env),
-        ("neuromechanist_numpy", VENV_COMPETITORS,  RUNNERS_DIR / "run_neuromechanist.py", None),
+        ("amica_python_jax",         VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   _amica_fb_env),
+        ("amica_python_jax_chunked", VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   _amica_chunked_env),
+        ("amica_python_numpy",       VENV_AMICA,        RUNNERS_DIR / "run_amica_python.py",   {"AMICA_NO_JAX": "1"}),
+        ("pyamica_torch",            VENV_COMPETITORS,  RUNNERS_DIR / "run_pyamica.py",        _torch_env),
+        ("scott_huberty_torch",      VENV_COMPETITORS,  RUNNERS_DIR / "run_scott_huberty.py",  _torch_env),
+        ("neuromechanist_numpy",     VENV_COMPETITORS,  RUNNERS_DIR / "run_neuromechanist.py", None),
     ]
     # Fortran AMICA 1.7 on the same projected input (CPU/RSS only; binary on the cluster).
     if args.include_fortran:
         runs.append(
-            ("fortran_amica17",  VENV_AMICA,        RUNNERS_DIR / "run_fortran.py",        None)
+            ("fortran_amica17",      VENV_AMICA,        RUNNERS_DIR / "run_fortran.py",        None)
         )
 
     # 3. Run each (impl × seed)
