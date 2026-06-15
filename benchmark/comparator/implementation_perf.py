@@ -326,11 +326,14 @@ def main() -> None:
     _amica_env: dict = {}
     if args.amica_device == "gpu":
         _amica_env = {"JAX_PLATFORMS": "cuda", "XLA_PYTHON_CLIENT_PREALLOCATE": "false"}
-    # Torch competitors: GPU only when --competitor-device gpu; caching allocator off
-    #    so max_memory_allocated + a neutral NVML reading reflect true demand.
+    # Torch competitors: GPU only when --competitor-device gpu. Do NOT disable the caching
+    #    allocator (PYTORCH_NO_CUDA_MEMORY_CACHING) — that bypasses the allocator bookkeeping and
+    #    zeroes torch.cuda.max_memory_allocated(). Caching only inflates the *reserved* pool
+    #    (max_memory_reserved), which we don't read; max_memory_allocated is the live-tensor peak
+    #    (true demand) and the apples-to-apples analogue of XLA peak_bytes_in_use.
     _torch_env: dict = {}
     if args.competitor_device == "gpu":
-        _torch_env = {"TORCH_DEVICE": "cuda", "PYTORCH_NO_CUDA_MEMORY_CACHING": "1"}
+        _torch_env = {"TORCH_DEVICE": "cuda"}
     if args.nvml_crosscheck:
         _amica_env["AMICA_NVML_CROSSCHECK"] = "1"
         _torch_env["AMICA_NVML_CROSSCHECK"] = "1"
