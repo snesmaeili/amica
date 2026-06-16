@@ -194,6 +194,28 @@ def cmd_compare(args):
     S_p = W_py @ Xw
     src_r, _ = _matched_source_r(S_f, S_p)
 
+    # --- density parameters (alpha, mu, sbeta, rho): align the component axis by the W-match
+    #     permutation, then |corr| over the flattened (n_comp x n_mix) params. fix_init makes the
+    #     per-source mixture order deterministic + identical on both sides, and |corr| is
+    #     sign/scale-robust (absorbs W-row sign flips + the sbeta-vs-beta scale convention). ---
+    _pr_idx, _pc_idx = _match_rows(fr["W"], W_py)[3]
+
+    def _sq(P):
+        P = np.asarray(P)
+        return P[0] if P.ndim == 3 else P  # (n_models, n_mix, n_comp) -> (n_mix, n_comp)
+
+    def _param_match_r(F, P):
+        Fp = np.asarray(F)[_pr_idx].ravel()   # fortran (n_comp, n_mix), components reordered
+        Pp = _sq(P).T[_pc_idx].ravel()        # python (n_mix, n_comp) -> (n_comp, n_mix), reordered
+        fa = (Fp - Fp.mean()) / (Fp.std() + 1e-12)
+        pa = (Pp - Pp.mean()) / (Pp.std() + 1e-12)
+        return float(abs(np.mean(fa * pa)))
+
+    alpha_r = _param_match_r(fr["alpha"], res.alpha_)
+    mu_r = _param_match_r(fr["mu"], res.mu_)
+    sbeta_r = _param_match_r(fr["sbeta"], res.sbeta_)
+    rho_r = _param_match_r(fr["rho"], res.rho_)
+
     out = dict(
         config=meta,
         fortran_n_iter=int(fr["n_iter"]), python_n_iter=int(ll_py.size),
@@ -203,6 +225,8 @@ def cmd_compare(args):
         W_matched_abs_r_mean=mean_r, W_matched_abs_r_min=float(per_r.min()),
         W_aligned_frobenius_rel=fro_rel,
         matched_source_abs_r_mean=src_r,
+        alpha_matched_abs_r=alpha_r, mu_matched_abs_r=mu_r,
+        sbeta_matched_abs_r=sbeta_r, rho_matched_abs_r=rho_r,
         n_common_iters=n_common, ll_traj_max_abs_diff=ll_traj_max_abs_diff,
         ll_iter0_fortran=float(ll_f_traj[0]) if ll_f_traj.size else None,
         ll_iter0_python=float(ll_py[0]) if ll_py.size else None,
