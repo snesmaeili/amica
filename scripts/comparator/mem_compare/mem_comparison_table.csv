@@ -1,0 +1,9 @@
+implementation,device,peak_rss_gb,delta_rss_gb,peak_vram_gb,fit_time_s,n_iter
+amica_python_jax,cpu,11.39,8.97,,218.7,100
+amica_python_jax_chunked,cpu,6.64,4.22,,223.6,100
+scott_huberty_torch,cpu,5.67,3.24,,196.3,100
+pyamica_torch,cpu,2.42,0.0,,771.9,100
+fortran_amica17,cpu,1.54,1.54,,670.2,100
+amica_python_jax_chunked,gpu,2.43,,3.06,23.4,100
+scott_huberty_torch,gpu,2.43,,4.75,7.0,100
+pyamica_torch,gpu,2.43,,19.9,7.6,100
