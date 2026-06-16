@@ -372,6 +372,9 @@ def run_tolerance_sweep(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subject", type=int, default=1)
+    parser.add_argument("--dataset", type=str, default="ds004505",
+                        choices=["mne", "ds004505", "ds004504"],
+                        help="Dataset to load (shared loader with the AMICA runner).")
     parser.add_argument(
         "--method",
         type=str,
@@ -415,12 +418,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not args.bids_root:
-        raise SystemExit(
-            "BIDS_ROOT_DS4505 not set and --bids-root not provided. "
-            "Point this at the local copy of ds004505/raw_bids."
-        )
-    os.environ["BIDS_ROOT_DS4505"] = args.bids_root
+    if args.dataset == "ds004505":
+        if not args.bids_root:
+            raise SystemExit(
+                "BIDS_ROOT_DS4505 not set and --bids-root not provided. "
+                "Point this at the local copy of ds004505/raw_bids."
+            )
+        os.environ["BIDS_ROOT_DS4505"] = args.bids_root
 
     runner = load_runner(Path(args.runner_path) if args.runner_path else None)
     DEFAULT_HP_FREQ = runner.DEFAULT_HP_FREQ
@@ -431,7 +435,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     raw, input_metadata = runner.load_data(
-        "ds004505",
+        args.dataset,
         args.subject,
         input_level=args.input_level,
         return_metadata=True,
@@ -462,7 +466,7 @@ def main() -> None:
             w_change=w_change_used,
             fit_params=used_fit_params,
         )
-        metrics["dataset"] = "ds004505"
+        metrics["dataset"] = args.dataset
         metrics["subject"] = f"sub-{args.subject:02d}"
         metrics.update(input_metadata)
 
@@ -473,7 +477,7 @@ def main() -> None:
             raw=raw,
             input_metadata=input_metadata,
             method_metrics=metrics,
-            dataset="ds004505",
+            dataset=args.dataset,
             subject=args.subject,
             backend=method,
             device="cpu",
