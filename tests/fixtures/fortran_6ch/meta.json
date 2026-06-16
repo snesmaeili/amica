@@ -1,0 +1,9 @@
+{
+  "n_channels": 6,
+  "n_samples": 20000,
+  "m": 3,
+  "max_iter": 2000,
+  "do_newton": 1,
+  "seed": 0,
+  "dataset": "synth6"
+}
