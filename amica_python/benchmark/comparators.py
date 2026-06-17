@@ -440,8 +440,10 @@ def main() -> None:
         input_level=args.input_level,
         return_metadata=True,
     )
-    input_metadata.update(runner.apply_analysis_window(raw, duration_sec=None, resample_sfreq=None))
-    raw = runner.preprocess(raw)
+    input_metadata.update(runner.apply_analysis_window(
+        raw, duration_sec=None,
+        resample_sfreq=input_metadata.get("resample_sfreq")))
+    raw = runner.preprocess(raw, line_freq=input_metadata.get("line_freq", 60.0))
     input_metadata = runner.build_input_metadata(raw, input_metadata)
     runner.print_amica_input_summary(raw, input_metadata)
 

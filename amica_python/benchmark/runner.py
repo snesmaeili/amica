@@ -25,8 +25,19 @@ import numpy as np
 
 
 DS004505_CHANNEL_SELECTION = "scalp_eeg_only_excluding_noise_emg_imu_none"
-FILTERING_DESCRIPTION = "MNE FIR 1-100 Hz + 60 Hz notch"
+FILTERING_DESCRIPTION = "MNE FIR 1-100 Hz + per-site line notch"
 DEFAULT_HP_FREQ = 1.0
+
+# Mains line-noise frequency per dataset (notch target), from each dataset's BIDS
+# PowerLineFrequency / recording site: ds004505 US = 60 Hz; ds004504 Greece = 50 Hz;
+# ds004621 Poland = 50 Hz (its BIDS sidecar is empty, value from Dzianok 2022). The
+# MNE sample data is US-recorded => 60 Hz.
+DATASET_LINE_FREQ = {"mne": 60.0, "ds004505": 60.0, "ds004504": 50.0, "ds004621": 50.0}
+# Per-dataset analysis resample target (Hz). Only ds004621 differs: recorded at 1000 Hz
+# (4x the others) with no ICA benefit -> downsample to 250 Hz (EEGLAB standard for ICA,
+# matches ds004505) for comparable sample counts + ~4x faster fits. Absent => keep the
+# file's native rate (ds004505 250 Hz, ds004504 500 Hz).
+DATASET_RESAMPLE = {"ds004621": 250.0}
 
 
 def raw_duration_s(raw):
@@ -312,10 +323,10 @@ def build_input_metadata(raw, input_metadata=None):
     metadata["analysis_sfreq"] = float(raw.info["sfreq"])
     metadata["duration_used_s"] = raw_duration_s(raw)
     metadata["filtering"] = FILTERING_DESCRIPTION
-    # Explicit filter cutoffs (set in preprocess(): 1-100 Hz FIR + 60 Hz notch)
+    # Explicit filter cutoffs (set in preprocess(): 1-100 Hz FIR + per-site line notch)
     metadata.setdefault("highpass_hz", 1.0)
     metadata.setdefault("lowpass_hz", 100.0)
-    metadata.setdefault("notch_hz", 60.0)
+    metadata.setdefault("notch_hz", metadata.get("line_freq", 60.0))
     # Reference: we don't reapply a reference; whatever EEGLAB had is preserved.
     info_proj = raw.info.get("custom_ref_applied") if isinstance(raw.info, dict) else getattr(raw.info, "custom_ref_applied", None)
     metadata.setdefault("reference", "as_loaded_from_eeglab")
@@ -575,17 +586,26 @@ def load_data(dataset_name, subject_id, task=None, input_level="auto", return_me
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
+    # Per-site mains frequency (notch target) + per-dataset analysis resample, consumed
+    # by preprocess() / apply_analysis_window() so AMICA and the comparators share them.
+    metadata["line_freq"] = DATASET_LINE_FREQ.get(dataset_name, 60.0)
+    metadata["resample_sfreq"] = DATASET_RESAMPLE.get(dataset_name)
+
     if return_metadata:
         return raw, metadata
     return raw
 
 
-def preprocess(raw):
-    """Preprocess data using FIR filters."""
+def preprocess(raw, line_freq=60.0):
+    """Preprocess data using FIR filters: bandpass 1-100 Hz + line-noise notch.
+
+    line_freq is the recording site's mains frequency (50 Hz for the European
+    datasets ds004504/ds004621, 60 Hz for the US ds004505 + MNE sample).
+    """
     ensure_preloaded(raw)
-    # Bandpass 1-100 Hz, Notch 60 Hz
+    # Bandpass 1-100 Hz, notch the local mains line
     raw.filter(1.0, 100.0, method="fir", fir_design="firwin")
-    raw.notch_filter(60.0, method="fir", fir_design="firwin")
+    raw.notch_filter(line_freq, method="fir", fir_design="firwin")
     return raw
 
 
@@ -1252,10 +1272,11 @@ def main():
             apply_analysis_window(
                 raw,
                 duration_sec=args.duration_sec,
-                resample_sfreq=args.resample,
+                resample_sfreq=(args.resample if args.resample is not None
+                                else input_metadata.get("resample_sfreq")),
             )
         )
-        raw = preprocess(raw)
+        raw = preprocess(raw, line_freq=input_metadata.get("line_freq", 60.0))
         input_metadata = build_input_metadata(raw, input_metadata)
         print_amica_input_summary(raw, input_metadata)
 
