@@ -25,8 +25,19 @@ import numpy as np
 
 
 DS004505_CHANNEL_SELECTION = "scalp_eeg_only_excluding_noise_emg_imu_none"
-FILTERING_DESCRIPTION = "MNE FIR 1-100 Hz + 60 Hz notch"
+FILTERING_DESCRIPTION = "MNE FIR 1-100 Hz + per-site line notch"
 DEFAULT_HP_FREQ = 1.0
+
+# Mains line-noise frequency per dataset (notch target), from each dataset's BIDS
+# PowerLineFrequency / recording site: ds004505 US = 60 Hz; ds004504 Greece = 50 Hz;
+# ds004621 Poland = 50 Hz (its BIDS sidecar is empty, value from Dzianok 2022). The
+# MNE sample data is US-recorded => 60 Hz.
+DATASET_LINE_FREQ = {"mne": 60.0, "ds004505": 60.0, "ds004504": 50.0, "ds004621": 50.0}
+# Per-dataset analysis resample target (Hz). All real datasets are standardized to 250 Hz
+# (EEGLAB standard for ICA; ds004505 is natively 250) so absolute MIR (kbits/s, which scales
+# with sampling rate) is comparable across datasets and fits stay fast: ds004621 1000->250
+# (4x), ds004504 500->250 (2x). Absent => keep the file's native rate.
+DATASET_RESAMPLE = {"ds004504": 250.0, "ds004621": 250.0}
 
 
 def raw_duration_s(raw):
@@ -312,10 +323,10 @@ def build_input_metadata(raw, input_metadata=None):
     metadata["analysis_sfreq"] = float(raw.info["sfreq"])
     metadata["duration_used_s"] = raw_duration_s(raw)
     metadata["filtering"] = FILTERING_DESCRIPTION
-    # Explicit filter cutoffs (set in preprocess(): 1-100 Hz FIR + 60 Hz notch)
+    # Explicit filter cutoffs (set in preprocess(): 1-100 Hz FIR + per-site line notch)
     metadata.setdefault("highpass_hz", 1.0)
     metadata.setdefault("lowpass_hz", 100.0)
-    metadata.setdefault("notch_hz", 60.0)
+    metadata.setdefault("notch_hz", metadata.get("line_freq", 60.0))
     # Reference: we don't reapply a reference; whatever EEGLAB had is preserved.
     info_proj = raw.info.get("custom_ref_applied") if isinstance(raw.info, dict) else getattr(raw.info, "custom_ref_applied", None)
     metadata.setdefault("reference", "as_loaded_from_eeglab")
@@ -522,9 +533,9 @@ def load_data(dataset_name, subject_id, task=None, input_level="auto", return_me
         metadata.update(select_ds004505_scalp_eeg(raw, set_path=target_set_file))
 
     elif dataset_name == "ds004504":
-        # Eyes-closed resting-state EEG (Miltiadous et al. 2023, MDPI Data 8:95)
-        # — the STATIONARY comparator. 19-ch 10-20, 500 Hz. Healthy-control (CN)
-        # subjects are sub-037..sub-065. 3-digit BIDS ids.
+        # 19-channel eyes-closed resting EEG (Miltiadous et al. 2023, MDPI Data 8:95;
+        # AD/FTD/HC cohort — we use the healthy-control subjects sub-037..sub-065, 3-digit
+        # BIDS ids). One continuous EEGLAB .set per subject, no events; 500 Hz, 10-20.
         default_root = "/scratch/sesma/datasets/ds004504"
         bids_root = Path(os.environ.get("BIDS_ROOT_DS4504", default_root))
         if not bids_root.exists():
@@ -532,31 +543,70 @@ def load_data(dataset_name, subject_id, task=None, input_level="auto", return_me
         sub = f"sub-{subject_id:03d}"
         set_file = bids_root / sub / "eeg" / f"{sub}_task-eyesclosed_eeg.set"
         if not set_file.exists():
-            raise FileNotFoundError(f"ds004504 .set not found: {set_file}")
-        print(f"Loading resting-state file: {set_file}", file=sys.stderr)
+            raise FileNotFoundError(f"ds004504 input not found: {set_file}")
+        print(f"Loading ds004504 resting file: {set_file}", file=sys.stderr)
         raw = mne.io.read_raw_eeglab(set_file, preload=False)
-        raw.pick_types(eeg=True, exclude="bads")
+        # The 19 channels are all scalp EEG (10-20); force the type so downstream EEG
+        # selection / ICLabel / dipolarity see them, and attach the standard montage
+        # (the raw .set carries no positions).
+        raw.set_channel_types({ch: "eeg" for ch in raw.ch_names})
+        raw.set_montage("standard_1020", match_case=False, on_missing="warn")
         metadata = {
             "input_file": str(set_file),
-            "input_level": "ds004504_eyesclosed",
+            "input_level": "raw_eyesclosed",
             "loaded_sfreq": float(raw.info["sfreq"]),
+            "channel_selection": "all_eeg_1020",
+            "n_loaded_channels": int(len(raw.ch_names)),
+            "n_amica_input_channels": int(len(raw.ch_names)),
+        }
+
+    elif dataset_name == "ds004621":
+        # 128-channel BrainVision resting EEG (Nencki-Symfonia, Dzianok et al. 2022,
+        # GigaScience 11:giac015; healthy young adults sub-01..sub-42). One task-rest
+        # recording per subject; 127 stored channels (FCz online ref) on a 10-5 layout,
+        # 1000 Hz (resampled to 250). PCA-reduced downstream via --n-components.
+        default_root = "/scratch/sesma/datasets/ds004621"
+        bids_root = Path(os.environ.get("BIDS_ROOT_DS4621", default_root))
+        if not bids_root.exists():
+            raise FileNotFoundError(f"ds004621 not found at {bids_root}.")
+        sub = f"sub-{subject_id:02d}"
+        vhdr = bids_root / sub / "eeg" / f"{sub}_task-rest_eeg.vhdr"
+        if not vhdr.exists():
+            raise FileNotFoundError(f"ds004621 input not found: {vhdr}")
+        print(f"Loading ds004621 resting file: {vhdr}", file=sys.stderr)
+        raw = mne.io.read_raw_brainvision(vhdr, preload=False)
+        raw.set_montage("standard_1005", match_case=False, on_missing="warn")
+        metadata = {
+            "input_file": str(vhdr),
+            "input_level": "raw_rest_brainvision",
+            "loaded_sfreq": float(raw.info["sfreq"]),
+            "channel_selection": "all_eeg_1005",
             "n_loaded_channels": int(len(raw.ch_names)),
             "n_amica_input_channels": int(len(raw.ch_names)),
         }
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
+    # Per-site mains frequency (notch target) + per-dataset analysis resample, consumed
+    # by preprocess() / apply_analysis_window() so AMICA and the comparators share them.
+    metadata["line_freq"] = DATASET_LINE_FREQ.get(dataset_name, 60.0)
+    metadata["resample_sfreq"] = DATASET_RESAMPLE.get(dataset_name)
+
     if return_metadata:
         return raw, metadata
     return raw
 
 
-def preprocess(raw):
-    """Preprocess data using FIR filters."""
+def preprocess(raw, line_freq=60.0):
+    """Preprocess data using FIR filters: bandpass 1-100 Hz + line-noise notch.
+
+    line_freq is the recording site's mains frequency (50 Hz for the European
+    datasets ds004504/ds004621, 60 Hz for the US ds004505 + MNE sample).
+    """
     ensure_preloaded(raw)
-    # Bandpass 1-100 Hz, Notch 60 Hz
+    # Bandpass 1-100 Hz, notch the local mains line
     raw.filter(1.0, 100.0, method="fir", fir_design="firwin")
-    raw.notch_filter(60.0, method="fir", fir_design="firwin")
+    raw.notch_filter(line_freq, method="fir", fir_design="firwin")
     return raw
 
 

@@ -34,22 +34,68 @@ from run_multimodel_demo import _load_events  # noqa: E402
 
 K_DATALEN = 25  # Hsu's empirical constant in ~k*H*N^2
 
+# Canonical 19-channel 10-20 set (+ legacy aliases) for the matched-channel control:
+# subsetting the high-density task recording to the same montage as the 19-ch resting
+# cohort isolates the task effect from electrode density.
+TENTWENTY = ["Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8", "T7", "C3", "Cz",
+             "C4", "T8", "P7", "P3", "Pz", "P4", "P8", "O1", "O2"]
+_TT_ALIASES = {"T7": ("T7", "T3"), "T8": ("T8", "T4"), "P7": ("P7", "T5"), "P8": ("P8", "T6")}
 
-def _preprocess(dataset, subject, n_components, duration_sec, resample, input_level, seed):
-    """load -> (optional crop+resample) -> filter -> PCA(N) -> var-normalize.
 
-    Returns (X (N,T), sfreq, ch_names). duration_sec<=0 uses the full recording.
+def _pick_tentwenty(raw):
+    """Restrict raw to the 19 ten-twenty channels (name-matched, case-insensitive)."""
+    have = {c.upper(): c for c in raw.info["ch_names"]}
+    keep = []
+    for name in TENTWENTY:
+        for alias in _TT_ALIASES.get(name, (name,)):
+            if alias.upper() in have:
+                keep.append(have[alias.upper()])
+                break
+    if len(keep) < 16:
+        raise RuntimeError(f"channel-subset tentwenty matched only {len(keep)}/19: {keep}")
+    raw.pick(keep)
+    return raw
+
+
+def _phase_surrogate(X, seed):
+    """Multivariate phase-randomized STATIONARY surrogate of X (N,T).
+
+    Randomizes Fourier phases with the SAME random phase per frequency across all
+    components, preserving every component's power spectrum and the cross-component
+    (stationary) covariance while destroying temporal non-stationarity. A genuinely
+    non-stationary recording yields N_eff/dLL well above its surrogate; an artifact of
+    fitting many models to any data would not.
+    """
+    rng = np.random.default_rng(seed)
+    T = X.shape[1]
+    Xf = np.fft.rfft(X, axis=1)
+    ph = np.exp(1j * rng.uniform(0.0, 2.0 * np.pi, size=Xf.shape[1]))
+    ph[0] = 1.0
+    if T % 2 == 0:
+        ph[-1] = 1.0
+    return np.fft.irfft(Xf * ph[None, :], n=T, axis=1).astype(np.float64)
+
+
+def _preprocess(dataset, subject, n_components, duration_sec, resample, input_level, seed,
+                channel_subset=None, surrogate=None):
+    """load -> (channel subset) -> (crop+resample) -> filter -> PCA(N) -> var-normalize
+    -> (optional stationary surrogate).
+
+    Returns (X (N,T), sfreq, ch_names, pca_components, pca_stds). duration_sec<=0 = full.
     """
     from sklearn.decomposition import PCA
     from amica_python.benchmark import runner as amica_runner
 
-    raw, _meta = amica_runner.load_data(
+    raw, meta = amica_runner.load_data(
         dataset, subject, input_level=input_level, return_metadata=True
     )
+    if channel_subset == "tentwenty":
+        _pick_tentwenty(raw)
     win = duration_sec if (duration_sec and duration_sec > 0) else None
     if win is not None or resample:
         amica_runner.apply_analysis_window(raw, duration_sec=win, resample_sfreq=resample)
-    raw = amica_runner.preprocess(raw)
+    # per-site mains notch (50 Hz for the European cohorts, 60 Hz for ds004505)
+    raw = amica_runner.preprocess(raw, line_freq=meta.get("line_freq", 60.0))
     sfreq = float(raw.info["sfreq"])
     ch_names = list(raw.info["ch_names"])
 
@@ -60,9 +106,13 @@ def _preprocess(dataset, subject, n_components, duration_sec, resample, input_le
     projected = pca.fit_transform(data.T).T
     stds = np.std(projected, axis=1, keepdims=True)
     stds[stds == 0] = 1.0
+    X = projected / stds
+    if surrogate == "phase":
+        # stationary null: same data spectrum + covariance, non-stationarity removed
+        X = _phase_surrogate(X, seed)
     # also return the PCA basis so sensor-space topographies can be reconstructed
     # downstream: sensor_mixing = components_.T @ (amica_mixing * stds)
-    return (projected / stds, sfreq, ch_names,
+    return (X, sfreq, ch_names,
             pca.components_.astype(np.float32), stds.ravel().astype(np.float32))
 
 
@@ -80,13 +130,22 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--post-downsample-hz", type=float, default=10.0)
     ap.add_argument("--skip-underpowered", action="store_true")
+    ap.add_argument("--channel-subset", default=None, choices=[None, "tentwenty"],
+                    help="restrict to the 19 ten-twenty channels (matched-channel task control)")
+    ap.add_argument("--surrogate", default=None, choices=[None, "phase"],
+                    help="fit a multivariate phase-randomized stationary surrogate (null control)")
     ap.add_argument("--output-dir", default=None)
     args = ap.parse_args()
 
     out_dir = Path(args.output_dir or os.environ.get("AMICA_RESULTS_DIR", "results"))
     out_dir.mkdir(parents=True, exist_ok=True)
     H = args.num_models
-    tag = f"mmbench_{args.dataset}_sub-{args.subject:02d}_N{args.n_components}_M{H}"
+    suffix = ""
+    if args.channel_subset:
+        suffix += f"_{args.channel_subset}"
+    if args.surrogate:
+        suffix += f"_surr{args.surrogate}"
+    tag = f"mmbench_{args.dataset}_sub-{args.subject:02d}_N{args.n_components}_M{H}{suffix}"
     out_path = out_dir / f"{tag}.npz"
 
     print(f"[mmbench] preprocessing {args.dataset} sub-{args.subject:02d} "
@@ -94,6 +153,7 @@ def main():
     X, sfreq, ch_names, pca_components, pca_stds = _preprocess(
         args.dataset, args.subject, args.n_components, args.duration_sec,
         args.resample, args.input_level, args.seed,
+        channel_subset=args.channel_subset, surrogate=args.surrogate,
     )
     N, T = X.shape
     H_max = int(T // (K_DATALEN * N * N))
@@ -146,6 +206,7 @@ def main():
     np.savez_compressed(
         out_path,
         dataset=args.dataset, subject=args.subject, device=device,
+        channel_subset=str(args.channel_subset), surrogate=str(args.surrogate),
         num_models=H, n_components=N, n_samples=T, sfreq=sfreq,
         H_max=H_max, kappa_eff=kappa_eff, flag_underpowered=flag,
         samples_per_model=float(T) / H, n_iter=int(result.n_iter),
