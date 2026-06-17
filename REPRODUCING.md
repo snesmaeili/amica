@@ -33,6 +33,34 @@ gunzip -k results/v3_paper_stage1_cluster/iteration_trace.csv.gz
 Edit only `env.local` (allocation / GPU type / data path). `submit_all.sh` passes
 those to `sbatch`, overriding the fir (H100) defaults baked into each script.
 
+### MIR/dipolarity replication on two more datasets (ds004504 + ds004621)
+
+The headline MIR/dipolarity comparison is replicated on two further public resting-state
+datasets — **ds004504** (Miltiadous et al. 2023; 19-ch clinical resting, 29 healthy
+controls) and **ds004621** (Dzianok et al. 2022, Nencki-Symfonia; 128-ch resting, 42
+subjects). Each runs AMICA-JAX (GPU) + the three MNE comparators (CPU) on the **same**
+per-site-preprocessed input, so the AMICA-vs-others comparison is matched within each
+dataset. All three real datasets are standardized to a common **250 Hz** with a **1 Hz
+high-pass, 1–100 Hz band-pass and a local-mains notch** (50 Hz for the European ds004504 /
+ds004621, 60 Hz for the US ds004505); the per-site notch + resample are applied
+automatically inside `runner.load_data` / `preprocess` (no per-script flags).
+
+```bash
+cd benchmark/cc_benchmark
+cp env.template env.local            # set BIDS_ROOT_DS4504 + BIDS_ROOT_DS4621 (+ allocation/GPU)
+module load git-annex
+bash download_ds004504.sh && bash download_ds004621.sh   # public OpenNeuro data
+bash submit_replication.sh           # 4 arrays: AMICA-GPU + comparators, per dataset
+# when all arrays finish, aggregate each dataset's JSONs:
+python -m amica_python.benchmark.aggregate --results-dir "$DS4504_RESULTS_DIR" --output-dir "$DS4504_RESULTS_DIR"
+python -m amica_python.benchmark.aggregate --results-dir "$DS4621_RESULTS_DIR" --output-dir "$DS4621_RESULTS_DIR"
+```
+
+AMICA uses `--n-components` 15 (ds004504, under the 19-ch rank) and 64 (ds004621); the
+comparators use the same. Absolute MIR (kbits/s) is **not** comparable across datasets — it
+scales with sampling rate and channel count — so cross-dataset claims use the per-subject
+win-count and effect size `d_z`, not the raw value.
+
 ---
 
 ## Quick reference: figure → script map

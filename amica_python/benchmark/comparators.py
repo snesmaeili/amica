@@ -372,6 +372,9 @@ def run_tolerance_sweep(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subject", type=int, default=1)
+    parser.add_argument("--dataset", type=str, default="ds004505",
+                        choices=["ds004505", "ds004504", "ds004621", "mne"],
+                        help="Dataset to run the comparators on (must match the AMICA job).")
     parser.add_argument(
         "--method",
         type=str,
@@ -431,13 +434,15 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     raw, input_metadata = runner.load_data(
-        "ds004505",
+        args.dataset,
         args.subject,
         input_level=args.input_level,
         return_metadata=True,
     )
-    input_metadata.update(runner.apply_analysis_window(raw, duration_sec=None, resample_sfreq=None))
-    raw = runner.preprocess(raw)
+    input_metadata.update(runner.apply_analysis_window(
+        raw, duration_sec=None,
+        resample_sfreq=input_metadata.get("resample_sfreq")))
+    raw = runner.preprocess(raw, line_freq=input_metadata.get("line_freq", 60.0))
     input_metadata = runner.build_input_metadata(raw, input_metadata)
     runner.print_amica_input_summary(raw, input_metadata)
 
@@ -462,7 +467,7 @@ def main() -> None:
             w_change=w_change_used,
             fit_params=used_fit_params,
         )
-        metrics["dataset"] = "ds004505"
+        metrics["dataset"] = args.dataset
         metrics["subject"] = f"sub-{args.subject:02d}"
         metrics.update(input_metadata)
 
@@ -473,7 +478,7 @@ def main() -> None:
             raw=raw,
             input_metadata=input_metadata,
             method_metrics=metrics,
-            dataset="ds004505",
+            dataset=args.dataset,
             subject=args.subject,
             backend=method,
             device="cpu",
