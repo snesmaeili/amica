@@ -33,11 +33,11 @@ DEFAULT_HP_FREQ = 1.0
 # ds004621 Poland = 50 Hz (its BIDS sidecar is empty, value from Dzianok 2022). The
 # MNE sample data is US-recorded => 60 Hz.
 DATASET_LINE_FREQ = {"mne": 60.0, "ds004505": 60.0, "ds004504": 50.0, "ds004621": 50.0}
-# Per-dataset analysis resample target (Hz). Only ds004621 differs: recorded at 1000 Hz
-# (4x the others) with no ICA benefit -> downsample to 250 Hz (EEGLAB standard for ICA,
-# matches ds004505) for comparable sample counts + ~4x faster fits. Absent => keep the
-# file's native rate (ds004505 250 Hz, ds004504 500 Hz).
-DATASET_RESAMPLE = {"ds004621": 250.0}
+# Per-dataset analysis resample target (Hz). All real datasets are standardized to 250 Hz
+# (EEGLAB standard for ICA; ds004505 is natively 250) so absolute MIR (kbits/s, which scales
+# with sampling rate) is comparable across datasets and fits stay fast: ds004621 1000->250
+# (4x), ds004504 500->250 (2x). Absent => keep the file's native rate.
+DATASET_RESAMPLE = {"ds004504": 250.0, "ds004621": 250.0}
 
 
 def raw_duration_s(raw):
