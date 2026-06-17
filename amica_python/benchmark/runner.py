@@ -548,6 +548,30 @@ def load_data(dataset_name, subject_id, task=None, input_level="auto", return_me
             "n_loaded_channels": int(len(raw.ch_names)),
             "n_amica_input_channels": int(len(raw.ch_names)),
         }
+
+    elif dataset_name == "ds004621":
+        # 128-channel BrainVision resting EEG (Nencki-Symfonia; healthy young adults).
+        # One task-rest recording per subject (sub-01..sub-42); all 128 channels are
+        # scalp EEG on a 10-5 layout. PCA-reduced downstream via --n-components.
+        default_root = "/scratch/sesma/datasets/ds004621"
+        bids_root = Path(os.environ.get("BIDS_ROOT_DS4621", default_root))
+        if not bids_root.exists():
+            raise FileNotFoundError(f"ds004621 not found at {bids_root}.")
+        sub = f"sub-{subject_id:02d}"
+        vhdr = bids_root / sub / "eeg" / f"{sub}_task-rest_eeg.vhdr"
+        if not vhdr.exists():
+            raise FileNotFoundError(f"ds004621 input not found: {vhdr}")
+        print(f"Loading ds004621 resting file: {vhdr}", file=sys.stderr)
+        raw = mne.io.read_raw_brainvision(vhdr, preload=False)
+        raw.set_montage("standard_1005", match_case=False, on_missing="warn")
+        metadata = {
+            "input_file": str(vhdr),
+            "input_level": "raw_rest_brainvision",
+            "loaded_sfreq": float(raw.info["sfreq"]),
+            "channel_selection": "all_eeg_1005",
+            "n_loaded_channels": int(len(raw.ch_names)),
+            "n_amica_input_channels": int(len(raw.ch_names)),
+        }
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
@@ -1161,7 +1185,7 @@ def main():
     parser = argparse.ArgumentParser(description="AMICA single-subject benchmark")
     parser.add_argument("--subject", type=int, default=1)
     parser.add_argument("--dataset", type=str, default="mne",
-                        choices=["mne", "ds004505", "ds004504"])
+                        choices=["mne", "ds004505", "ds004504", "ds004621"])
     parser.add_argument("--device", type=str, choices=["cpu", "gpu"], default="cpu")
     parser.add_argument("--backend", type=str, choices=["jax", "numpy"], default="jax")
     parser.add_argument("--task", type=str, default=None,

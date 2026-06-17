@@ -373,7 +373,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--subject", type=int, default=1)
     parser.add_argument("--dataset", type=str, default="ds004505",
-                        choices=["mne", "ds004505", "ds004504"],
+                        choices=["mne", "ds004505", "ds004504", "ds004621"],
                         help="Dataset to load (shared loader with the AMICA runner).")
     parser.add_argument(
         "--method",
