@@ -51,6 +51,21 @@ ica.plot_components()
 ica.apply(raw)
 ```
 
+### Multi-model AMICA (M > 1)
+
+AMICA can fit a mixture of `M` ICA models — distinct unmixing matrices for distinct temporal regimes of non-stationary data (Palmer 2011; Hsu et al. 2018). `fit_ica(num_models=M)` returns the highest-weight model as the primary `mne.preprocessing.ICA` (so `apply`/`plot`/`get_sources` work unchanged), with the full multi-model result attached and any model retrievable:
+
+```python
+from amica_python import fit_ica, get_model_ica
+
+ica = fit_ica(raw, n_components=20, fit_params={"num_models": 3})
+ica.apply(raw)                                   # primary (highest-weight) model
+posteriors = ica.amica_result_.model_posteriors_  # (M, n_times): p(model | t)
+model2 = get_model_ica(ica, 2)                   # any model's ICA object
+```
+
+Likelihood-based sample rejection is currently single-model only.
+
 ### Picard-compatible Functional API
 
 For drop-in replacement in custom ICA pipelines:

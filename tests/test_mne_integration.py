@@ -191,11 +191,6 @@ def test_fit_ica_stores_unmixer_for_unwhitened_pca(AmicaMock, mock_mne_modules):
     )
 
 
-def test_fit_ica_multimodel_raises():
-    with pytest.raises(ValueError, match="only supports single-model AMICA"):
-        mne_integration.fit_ica(MockRaw(), fit_params={"num_models": 2})
-
-
 def test_mne_not_installed(monkeypatch):
     monkeypatch.setitem(sys.modules, "mne.preprocessing", None)
     with pytest.raises(ImportError, match="MNE-Python is required"):

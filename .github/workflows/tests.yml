@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [main, production-ready-amica, ci-tests-improvements]
+    branches: [main, production-ready-amica, ci-tests-improvements, jax-performance-pass, feat/multimodel-release]
   pull_request:
-    branches: [main, production-ready-amica, ci-tests-improvements]
+    branches: [main, production-ready-amica, ci-tests-improvements, jax-performance-pass]
   workflow_dispatch:
 
 concurrency:
