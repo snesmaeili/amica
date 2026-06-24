@@ -61,6 +61,28 @@ comparators use the same. Absolute MIR (kbits/s) is **not** comparable across da
 scales with sampling rate and channel count — so cross-dataset claims use the per-subject
 win-count and effect size `d_z`, not the raw value.
 
+### Held-out / cross-validated MIR (reviewer Major 4.1)
+
+To show the MIR ranking is not in-sample overfitting, each method is refit under **5-fold
+contiguous-block cross-validation** and scored on the held-out fold via the *train-fitted*
+PCA + unmixing (`run_heldout_cv.py` → `complete_mir_from_ica` on the held-out segment). One
+JSON per subject; AMICA on the H100 GPU (3000 iter), the comparators on CPU.
+
+```bash
+cd benchmark/cc_benchmark
+# export HELDOUT_RESULTS_DIR=/scratch/$USER/amica_heldout_cv   # optional; default shown
+sbatch submit_heldout_ds004505.sh    # 25-subject array, 5 folds, GPU
+sbatch submit_heldout_ds004504.sh    # 29-subject (19-ch clinical)
+sbatch submit_heldout_ds004621.sh    # 42-subject (128-ch)
+```
+
+### Scaling curves + hardware variants
+
+`submit_scaling_cpu.sh` / `submit_scaling_gpu.sh` sweep runtime + peak memory vs `n_samples`
+/ `n_components` / `chunk_size` (rendered by `scaling/plot_scaling.py`);
+`submit_jax_gpu_v3_float32.sh` and `submit_jax_gpu_kappa_v3.sh` are the float32 and
+alternate-GPU variants of the headline 25-subject run.
+
 ---
 
 ## Quick reference: figure → script map
