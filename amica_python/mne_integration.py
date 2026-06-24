@@ -187,15 +187,11 @@ def fit_ica(
 
     from amica_python import Amica, AmicaConfig
 
-    # Guard: MNE's ICA assumes a single decomposition matrix.
+    # Multi-model (num_models>1) is supported: fit_ica returns the highest-weight
+    # model's decomposition as the primary mne.preprocessing.ICA, with the full
+    # multi-model AmicaResult attached (ica.amica_result_) and any model
+    # retrievable via amica_python.get_model_ica(ica, h).
     _fit_params = fit_params or {}
-    _num_models = _fit_params.get("num_models", 1)
-    if _num_models > 1:
-        raise ValueError(
-            f"fit_ica() only supports single-model AMICA (num_models=1), "
-            f"got num_models={_num_models}. For multi-model AMICA, use "
-            f"Amica(config).fit(data) directly and access AmicaResult."
-        )
 
     # ================================================================
     # Direct MNE ICA construction (no throwaway Infomax)
@@ -282,7 +278,14 @@ def fit_ica(
     solver = Amica(config, random_state=random_state)
     result = solver.fit(data_for_amica)
 
-    W = result.unmixing_matrix_white_  # (n_comp, n_comp), operates on data_for_amica
+    W_white = np.asarray(result.unmixing_matrix_white_)
+    if W_white.ndim == 3:
+        # Multi-model: the primary decomposition is the highest-weight model.
+        _primary = int(np.argmax(np.asarray(result.gm_)))
+        W = W_white[_primary]
+    else:
+        _primary = 0
+        W = W_white  # (n_comp, n_comp), operates on data_for_amica
 
     # Step 5: undo per-component unit-variance normalisation applied at line ~269.
     # AMICA was fed pca_data / comp_stds; recovering the unmixer for unwhitened
@@ -335,4 +338,53 @@ def fit_ica(
     # Attach full AMICA result for viz module
     ica.amica_result_ = result
 
+    # Bookkeeping so any model of a multi-model fit can be materialised later
+    # (get_model_ica): the per-component normalisation and the primary index.
+    ica._amica_comp_stds = comp_stds
+    ica._amica_model_index = _primary
+
     return ica
+
+
+def get_model_ica(ica, model):
+    """Return an ``mne.preprocessing.ICA`` for one model of a multi-model AMICA fit.
+
+    ``fit_ica(num_models>1)`` returns the highest-weight model as the primary ICA.
+    This materialises any model's decomposition, sharing the same pre-whitening and
+    PCA so ``apply``/``get_sources``/``plot_*`` work unchanged.
+
+    Parameters
+    ----------
+    ica : mne.preprocessing.ICA
+        An ICA returned by :func:`fit_ica` for a multi-model fit (has
+        ``amica_result_`` with a 3-D ``unmixing_matrix_white_``).
+    model : int
+        Model index in ``[0, num_models)``.
+
+    Returns
+    -------
+    mne.preprocessing.ICA
+        A copy of ``ica`` whose unmixing/mixing matrices are model ``model``'s.
+    """
+    import copy
+
+    result = getattr(ica, "amica_result_", None)
+    W_white = None if result is None else np.asarray(result.unmixing_matrix_white_)
+    if W_white is None or W_white.ndim != 3:
+        raise ValueError(
+            "get_model_ica() requires an ICA returned by fit_ica(num_models>1)."
+        )
+    n_models = W_white.shape[0]
+    if not 0 <= int(model) < n_models:
+        raise IndexError(f"model {model} out of range [0, {n_models}).")
+
+    comp_stds = np.asarray(ica._amica_comp_stds).squeeze()[np.newaxis, :]
+    W_corrected = W_white[int(model)] / comp_stds
+
+    out = copy.copy(ica)  # shares pca/pre_whitener/info/amica_result_ (read-only)
+    out.unmixing_matrix_ = W_corrected
+    out.mixing_matrix_ = np.linalg.pinv(W_corrected)
+    out.exclude = []
+    out.labels_ = dict()
+    out._amica_model_index = int(model)
+    return out
