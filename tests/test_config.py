@@ -40,7 +40,7 @@ def test_validations():
         AmicaConfig(max_decs=-1)
     with pytest.raises(ValueError, match="max_incs must be >= 0"):
         AmicaConfig(max_incs=-1)
-    with pytest.raises(ValueError, match="chunk_size must be >= 1 or None"):
+    with pytest.raises(ValueError, match="chunk_size must be an int >= 1"):
         AmicaConfig(chunk_size=0)
     # Valid explicit chunk size
     config = AmicaConfig(chunk_size=1024)
@@ -50,4 +50,4 @@ def test_validations():
 def test_outdir_path_conversion():
     config = AmicaConfig(outdir="/tmp/amica")
     assert isinstance(config.outdir, Path)
-    assert str(config.outdir) == "/tmp/amica"
+    assert config.outdir.as_posix() == "/tmp/amica"
