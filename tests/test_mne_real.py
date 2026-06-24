@@ -109,3 +109,78 @@ def test_apply_preserves_shape(mne):
     recon = ica.apply(raw.copy(), exclude=[]).get_data()
     frob_rel = np.linalg.norm(data - recon, "fro") / np.linalg.norm(data, "fro")
     assert frob_rel < 1e-12, f"MNE apply() round-trip Frobenius residual: {frob_rel:.2e}"
+
+
+def test_apply_after_channel_reorder(mne):
+    """apply() matches components to channels by name, so a reordered Raw still
+    reconstructs to machine precision (channel-reordering conformance)."""
+    from amica_python import fit_ica
+
+    raw = _make_raw(mne, n_ch=5, n_samp=1500)
+    ica = fit_ica(raw, n_components=5, max_iter=10, fit_params={"do_newton": False})
+
+    reordered = raw.copy().reorder_channels(list(reversed(raw.ch_names)))
+    out = ica.apply(reordered, exclude=[]).copy().reorder_channels(raw.ch_names)
+    frob_rel = (np.linalg.norm(raw.get_data() - out.get_data(), "fro")
+                / np.linalg.norm(raw.get_data(), "fro"))
+    assert frob_rel < 1e-9, f"reordered apply round-trip residual: {frob_rel:.2e}"
+
+
+def test_fit_rank_deficient_input(mne):
+    """A rank-deficient Raw (one duplicated channel) fits at the reduced rank
+    without producing non-finite sources (rank-deficiency conformance)."""
+    from amica_python import fit_ica
+
+    rng = np.random.RandomState(0)
+    base = rng.randn(4, 2000) * 1e-6
+    data = np.vstack([base, base[0:1]])  # 5 channels, true rank 4
+    info = mne.create_info([f"EEG{i:03d}" for i in range(5)], sfreq=256, ch_types="eeg")
+    raw = mne.io.RawArray(data, info)
+
+    ica = fit_ica(raw, n_components=4, max_iter=15, fit_params={"do_newton": False})
+    assert ica.n_components_ == 4
+    src = ica.get_sources(raw).get_data()
+    assert src.shape[0] == 4
+    assert np.all(np.isfinite(src))
+
+
+@pytest.mark.filterwarnings("ignore")
+def test_iclabel_interop(mne):
+    """The fitted ICA object is accepted by mne-icalabel and returns one label
+    per component (ICLabel interoperability conformance; skips if not installed).
+
+    mne-icalabel emits a RuntimeWarning that ICLabel was tuned for extended
+    infomax rather than AMICA -- a documented caveat, not an interop failure --
+    so warnings are ignored here; the test asserts only that it runs and returns
+    one label per component."""
+    try:
+        from mne_icalabel import label_components
+    except ImportError:
+        pytest.skip("mne-icalabel not installed")
+    from amica_python import fit_ica
+
+    names = ["Fp1", "Fp2", "F3", "F4", "C3", "C4", "P3", "P4"]
+    rng = np.random.RandomState(7)
+    info = mne.create_info(names, sfreq=256, ch_types="eeg")
+    raw = mne.io.RawArray(rng.randn(len(names), 4000) * 1e-6, info)
+    raw.set_montage("standard_1020", on_missing="ignore")
+    raw.filter(1.0, 100.0, fir_design="firwin", verbose=False)
+    raw.set_eeg_reference("average", verbose=False)
+
+    ica = fit_ica(raw, n_components=7, max_iter=20, fit_params={"do_newton": False})
+    result = label_components(raw, ica, method="iclabel")
+    assert len(result["labels"]) == ica.n_components_
+
+
+def test_fit_ica_on_epochs(mne):
+    """fit_ica accepts an Epochs object and decomposes it (Epochs conformance)."""
+    from amica_python import fit_ica
+
+    raw = _make_raw(mne, n_ch=6, n_samp=6000)
+    events = mne.make_fixed_length_events(raw, duration=1.0)
+    epochs = mne.Epochs(raw, events, tmin=0.0, tmax=0.99, baseline=None, preload=True)
+
+    ica = fit_ica(epochs, n_components=4, max_iter=15, fit_params={"do_newton": False})
+    assert ica.n_components_ == 4
+    src = ica.get_sources(epochs).get_data()
+    assert src.shape[1] == 4 and np.all(np.isfinite(src))
