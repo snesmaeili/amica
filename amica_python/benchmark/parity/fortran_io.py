@@ -156,3 +156,42 @@ def read_fortran_results(outdir, *, n_components, n_mixtures, n_features=None):
     out["LL_clean"] = ll[ll != 0]
     out["n_iter"] = int(out["LL_clean"].size)
     return out
+
+
+def read_fortran_llt(outdir, *, n_samples, num_models=1, fname="LLt"):
+    """Read Fortran AMICA's per-sample log-likelihood output (``write_LLt=1``).
+
+    On-disk layout (``amica17_patched.f90`` write_output, direct-access with
+    ``recl = 2*nbyte = 8`` bytes = one float64 per record): **sample-major**, with
+    ``num_models + 1`` float64 values per sample — ``[modloglik_1..M, total]``. The
+    ``reject_data`` subroutine zeroes the ``loglik``/``modloglik`` of rejected
+    samples, so the Fortran rejected set is exactly ``{i : total[i] == 0.0}``
+    (a genuine log-likelihood is never exactly 0).
+
+    Parameters
+    ----------
+    outdir : path-like
+        Fortran output directory (contains the ``LLt`` file).
+    n_samples : int
+        Number of samples (the param ``field_dim``).
+    num_models : int
+        ``num_models`` (M); 1 for the single-model parity case.
+    fname : str
+        Output filename (Fortran's ``outfile_LLt`` = ``'LLt'``).
+
+    Returns
+    -------
+    modloglik : np.ndarray, shape (n_samples, num_models)
+        Per-model per-sample log-likelihood.
+    total : np.ndarray, shape (n_samples,)
+        Per-sample total log-likelihood (``0.0`` for rejected samples).
+    """
+    arr = np.fromfile(str(Path(outdir) / fname), dtype="<f8")
+    expected = int(n_samples) * (int(num_models) + 1)
+    if arr.size != expected:
+        raise ValueError(
+            f"LLt size {arr.size} != n_samples*(num_models+1) = {expected}; "
+            f"check n_samples/num_models, or the recl unit (expected 8 bytes/record)."
+        )
+    arr = arr.reshape(int(n_samples), int(num_models) + 1)
+    return arr[:, :int(num_models)].copy(), arr[:, int(num_models)].copy()

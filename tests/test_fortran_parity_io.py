@@ -3,6 +3,7 @@ import os
 
 os.environ.setdefault("AMICA_NO_JAX", "1")
 import numpy as np
+import pytest
 
 from amica_python.benchmark.parity import fortran_io as fio
 
@@ -47,6 +48,29 @@ def test_results_and_init_roundtrip(tmp_path):
     np.random.RandomState(4).randn(nm, nc).ravel(order="F").tofile(od / "mutmp.bin")
     W0, sb0, mu0 = fio.read_initial_weights(od, n_components=nc, n_mixtures=nm)
     assert np.allclose(W0, W) and sb0.shape == (nc, nm) and mu0.shape == (nc, nm)
+
+
+def test_llt_roundtrip_and_rejected_set(tmp_path):
+    """read_fortran_llt parses the sample-major (M+1)-per-sample float64 layout and
+    recovers the rejected set as {total == 0} (rejected samples are zeroed)."""
+    od = tmp_path / "out"
+    od.mkdir()
+    n_samples, M = 50, 1
+    rng = np.random.RandomState(5)
+    total = rng.standard_normal(n_samples)
+    rejected_true = np.array([7, 23, 41])
+    total[rejected_true] = 0.0  # Fortran reject_data zeroes loglik
+    # On disk: sample-major, [modloglik_1..M, total] per sample (M=1: mod == total).
+    arr = np.concatenate([total[:, None], total[:, None]], axis=1)  # (n_samples, M+1)
+    arr.astype("<f8").ravel().tofile(od / "LLt")
+
+    modloglik, tot = fio.read_fortran_llt(od, n_samples=n_samples, num_models=M)
+    assert modloglik.shape == (n_samples, M) and tot.shape == (n_samples,)
+    np.testing.assert_allclose(tot, total)
+    np.testing.assert_array_equal(np.where(tot == 0.0)[0], rejected_true)
+    # Wrong size is caught (guards the recl-unit / n_samples assumption).
+    with pytest.raises(ValueError):
+        fio.read_fortran_llt(od, n_samples=n_samples + 1, num_models=M)
 
 
 if __name__ == "__main__":
