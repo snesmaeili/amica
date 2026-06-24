@@ -610,14 +610,28 @@ def test_fit_transform_and_inverse(tiny_data):
         unfitted.save("dummy")
 
 
-def test_multimodel_raises(tiny_data):
-    """Test multi-model initialization raises NotImplementedError."""
+def test_multimodel_runs(tiny_data):
+    """Multi-model (num_models > 1) now runs and returns per-model results.
+
+    (Previously asserted NotImplementedError; multi-model is implemented as of
+    the multimodel-amica work — see tests/test_multimodel.py for the full
+    parity + recovery suite.)
+    """
     from amica_python import Amica, AmicaConfig
 
-    config = AmicaConfig(num_models=2, max_iter=2)
+    config = AmicaConfig(num_models=2, max_iter=3)
     solver = Amica(config, random_state=42)
-    with pytest.raises(NotImplementedError):
-        solver.fit(tiny_data)
+    result = solver.fit(tiny_data)
+
+    n_comp = result.unmixing_matrix_white_.shape[-1]
+    # per-model leading axis of 2
+    assert result.unmixing_matrix_white_.shape == (2, n_comp, n_comp)
+    assert result.gm_.shape == (2,)
+    assert np.isclose(result.gm_.sum(), 1.0, atol=1e-6)
+    # model-posterior time-course present and normalized
+    assert result.model_posteriors_ is not None
+    assert result.model_posteriors_.shape == (2, tiny_data.shape[1])
+    assert np.allclose(result.model_posteriors_.sum(axis=0), 1.0, atol=1e-6)
 
 
 def test_checkpoint_save_load(tiny_data, tmp_path):

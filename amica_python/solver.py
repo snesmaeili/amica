@@ -749,6 +749,81 @@ def _amica_step_fused(
     )
 
 
+def _amica_step_multimodel(
+    W, A, c, alpha, mu, beta, rho, gm,
+    lrate_step, rholrate, data_white, log_det_sphere,
+    newt_start_iter, iteration, invsigmin, invsigmax, minrho, maxrho,
+    do_newton, do_mean, do_sphere, doscaling,
+    update_alpha, update_mu, update_beta, update_rho,
+):
+    """Full-batch multi-model step (num_models > 1).
+
+    Same call contract / return tuple as ``_amica_step_fused``, but the params
+    carry a leading model axis and the E/M-step are the v-weighted multimodel
+    versions. ``do_sphere`` and the ``update_*`` flags are accepted for signature
+    compatibility but not used (multimodel always updates the pdf params;
+    sphering is handled in preprocessing).
+    """
+    from .multimodel import compute_chunk_stats_mm, m_step_mm
+
+    totals = compute_chunk_stats_mm(
+        data_white, W, c, alpha, mu, beta, rho, gm, log_det_sphere
+    )
+    n_total = totals.n_chunk
+    return m_step_mm(
+        totals, W, A, c, alpha, mu, beta, rho, gm, n_total,
+        lrate_step, rholrate, iteration, newt_start_iter,
+        invsigmin, invsigmax, minrho, maxrho,
+        do_newton, do_mean, doscaling,
+    )
+
+
+def _amica_step_multimodel_chunked(
+    W, A, c, alpha, mu, beta, rho, gm,
+    lrate_step, rholrate, data_white, log_det_sphere,
+    newt_start_iter, iteration, invsigmin, invsigmax, minrho, maxrho,
+    do_newton, do_mean, do_sphere, doscaling,
+    update_alpha, update_mu, update_beta, update_rho,
+    chunk_size,
+):
+    """Chunked multi-model step: Python time-loop + one M-step on the totals.
+
+    Mirrors ``_amica_step_chunked``; each per-chunk ``compute_chunk_stats_mm``
+    is jitted, the outer loop is plain Python.
+    """
+    from .multimodel import (
+        add_stats_mm,
+        compute_chunk_stats_mm,
+        m_step_mm,
+        zero_stats_mm,
+    )
+
+    n_models = W.shape[0]
+    n_comp = W.shape[1]
+    n_mix = alpha.shape[1]
+    n_samples = data_white.shape[1]
+
+    totals = zero_stats_mm(n_models, n_comp, n_mix, dtype=W.dtype)
+    start = 0
+    while start < n_samples:
+        end = min(start + chunk_size, n_samples)
+        totals = add_stats_mm(
+            totals,
+            compute_chunk_stats_mm(
+                data_white[:, start:end], W, c, alpha, mu, beta, rho, gm, log_det_sphere
+            ),
+        )
+        start = end
+
+    n_total = jnp.asarray(n_samples, dtype=W.dtype)
+    return m_step_mm(
+        totals, W, A, c, alpha, mu, beta, rho, gm, n_total,
+        lrate_step, rholrate, iteration, newt_start_iter,
+        invsigmin, invsigmax, minrho, maxrho,
+        do_newton, do_mean, doscaling,
+    )
+
+
 @dataclass
 class AmicaResult:
     """Container for AMICA results.
@@ -825,6 +900,9 @@ class AmicaResult:
     elapsed_times: np.ndarray = field(default_factory=lambda: np.array([]))
     converged: bool = False
     data_scale: float = 1.0
+    # Multi-model only (num_models > 1): the model-posterior time-course
+    # p(h|t), shape (n_models, n_samples). None for single-model fits.
+    model_posteriors_: np.ndarray | None = None
 
     def to_mne(self, info):
         """Convert results to MNE ICA object.
@@ -1163,10 +1241,9 @@ class Amica:
             Fitted model containing mixing/unmixing matrices and
             all model parameters.
         """
-        if self.config.num_models > 1:
-            raise NotImplementedError(
-                "Multi-model training is not yet fully implemented in the single-model fit loop."
-            )
+        # Multi-model (num_models > 1) is handled by a separate, fully-isolated
+        # step path selected below; the single-model path is left untouched so
+        # M=1 results stay bit-for-bit identical.
 
         # Determine target JAX dtype
         dtype = jnp.float32 if self.config.dtype == "float32" else jnp.float64
@@ -1283,8 +1360,11 @@ class Amica:
         _cfg_cs = self.config.chunk_size
         if _cfg_cs == "auto":
             _chunk_dtype = np.float32 if self.config.dtype == "float32" else np.float64
+            # Multi-model multiplies the per-sample E-step tensors by num_models;
+            # inflate the per-sample cost estimate so auto-chunking sizes against it.
+            _eff_nmix = self.config.num_mix_comps * max(1, self.config.num_models)
             _eff_chunk_size = _choose_chunk_size(
-                n_samples, n_components, self.config.num_mix_comps,
+                n_samples, n_components, _eff_nmix,
                 dtype=_chunk_dtype,
             )
             if _eff_chunk_size >= n_samples:
@@ -1296,15 +1376,22 @@ class Amica:
         else:
             _eff_chunk_size = None  # None = full batch
 
+        _multimodel = self.config.num_models > 1
         if _eff_chunk_size is not None:
-            # Chunked path is always the fused single-pass accumulator.
             _cs = _eff_chunk_size
-
-            def _step_fn(*args, _cs=_cs):
-                return _amica_step_chunked(*args, chunk_size=_cs)
+            if _multimodel:
+                def _step_fn(*args, _cs=_cs):
+                    return _amica_step_multimodel_chunked(*args, chunk_size=_cs)
+            else:
+                # Chunked single-model path is the fused single-pass accumulator.
+                def _step_fn(*args, _cs=_cs):
+                    return _amica_step_chunked(*args, chunk_size=_cs)
+        elif _multimodel:
+            # Full-batch multi-model: v-weighted per-model E/M-step.
+            _step_fn = _amica_step_multimodel
         else:
-            # Full-batch path: choose fused (default) vs classic recompute step.
-            # "auto" resolves to fused — it is numerically equivalent to classic
+            # Full-batch single-model: choose fused (default) vs classic.
+            # "auto" resolves to fused — numerically equivalent to classic
             # (matches to ~1e-15 per step) but computes responsibilities once.
             # "classic" is the parity oracle / exact-reproduction escape hatch.
             _estep = self.config.estep
@@ -1427,8 +1514,10 @@ class Amica:
             LL.append(ll_val)
 
             # ========== Sample Rejection ==========
+            # (single-model only; the per-sample LL below assumes 2D W/c)
             if (
-                self.config.do_reject
+                self.config.num_models == 1
+                and self.config.do_reject
                 and iteration >= self.config.rejstart
                 and rej_count < self.config.numrej
                 and (iteration - self.config.rejstart) % self.config.rejint == 0
@@ -1545,6 +1634,17 @@ class Amica:
                     natgrad_fallback_count,
                 )
 
+        # ========== Multi-model: model-posterior time-course p(h|t) ==========
+        model_posteriors = None
+        if self.config.num_models > 1:
+            from .multimodel import compute_model_posteriors
+
+            model_posteriors = np.asarray(
+                compute_model_posteriors(
+                    data_white, W, c, alpha, mu, beta, rho, gm, log_det_sphere
+                )
+            )
+
         # ========== Construct Result ==========
         self.result_ = AmicaResult(
             unmixing_matrix_white_=np.asarray(W),
@@ -1566,6 +1666,7 @@ class Amica:
             n_iter=len(LL),
             converged=converged,
             data_scale=scaling_factor,
+            model_posteriors_=model_posteriors,
         )
 
         assert self.result_ is not None
@@ -1617,6 +1718,46 @@ class Amica:
             Initial model probabilities.
         """
         rng = np.random.default_rng(self.random_state)
+
+        if n_models > 1:
+            # Multi-model init: per-model arrays with INDEPENDENT jitter so the
+            # models start distinct (identical inits never separate under EM).
+            # init_weights/init_params are not applied per-model here; use a 3D
+            # warm-start path in future if needed.
+            def _rand_A():
+                if self.config.fix_init:
+                    return np.eye(n_components, dtype=np.float64)
+                A_h = np.eye(n_components, dtype=np.float64) + 0.01 * (
+                    0.5 - rng.random((n_components, n_components))
+                )
+                cn = np.linalg.norm(A_h, axis=0)
+                cn = np.where(cn > 0.0, cn, 1.0)
+                return A_h / cn
+
+            A = jnp.asarray(np.stack([_rand_A() for _ in range(n_models)]), dtype=dtype)
+            W = jax.vmap(jnp.linalg.pinv)(A)
+
+            alpha = jnp.ones((n_models, n_mix, n_components), dtype=dtype) / n_mix
+            base = np.arange(n_mix, dtype=np.float64) - (n_mix - 1) / 2.0
+            mu_np = np.broadcast_to(
+                base[None, :, None], (n_models, n_mix, n_components)
+            ).astype(np.float64).copy()
+            if not self.config.fix_init:
+                mu_np = mu_np + 0.05 * (
+                    1.0 - 2.0 * rng.random((n_models, n_mix, n_components))
+                )
+            mu = jnp.asarray(mu_np, dtype=dtype)
+            if self.config.fix_init:
+                beta = jnp.ones((n_models, n_mix, n_components), dtype=dtype)
+            else:
+                beta = jnp.asarray(
+                    1.0 + 0.1 * (0.5 - rng.random((n_models, n_mix, n_components))),
+                    dtype=dtype,
+                )
+            rho = jnp.full((n_models, n_mix, n_components), self.config.rho0, dtype=dtype)
+            c = jnp.zeros((n_models, n_components), dtype=dtype)
+            gm = jnp.ones(n_models, dtype=dtype) / n_models
+            return W, A, alpha, mu, beta, rho, c, gm
 
         # Initialize mixing matrix then invert to get W.
         if init_weights is not None:
