@@ -70,14 +70,15 @@ def test_direct_vs_shim_sources_correlated(mne):
     assert np.all(max_corrs > 0.9), f"Source correlation too low: {max_corrs}"
 
 
-def test_multi_model_raises(mne):
-    """fit_ica() with num_models > 1 raises ValueError (real MNE path)."""
+def test_multi_model_now_supported(mne):
+    """fit_ica() with num_models > 1 is now supported (returns a multi-model fit);
+    the detailed exposure is checked in test_fit_ica_multimodel_mne_exposure."""
     from amica_python import fit_ica
 
-    raw = _make_raw(mne)
-    with pytest.raises(ValueError, match="single-model AMICA"):
-        fit_ica(raw, n_components=2, max_iter=10,
-                fit_params={"num_models": 2, "do_newton": False})
+    raw = _make_raw(mne, n_ch=6, n_samp=3000)
+    ica = fit_ica(raw, n_components=4, max_iter=20,
+                  fit_params={"num_models": 2, "do_newton": False})
+    assert np.asarray(ica.amica_result_.unmixing_matrix_white_).shape[0] == 2
 
 
 def test_amica_result_attached(mne):
@@ -184,3 +185,31 @@ def test_fit_ica_on_epochs(mne):
     assert ica.n_components_ == 4
     src = ica.get_sources(epochs).get_data()
     assert src.shape[1] == 4 and np.all(np.isfinite(src))
+
+
+def test_fit_ica_multimodel_mne_exposure(mne):
+    """fit_ica(num_models>1) returns the primary (highest-weight) model's ICA with
+    the full multi-model AmicaResult attached, and get_model_ica materialises any
+    model so standard MNE ops keep working (multi-model MNE conformance)."""
+    from amica_python import fit_ica, get_model_ica
+
+    raw = _make_raw(mne, n_ch=8, n_samp=4000)
+    ica = fit_ica(raw, n_components=6, max_iter=40,
+                  fit_params={"num_models": 2, "do_newton": False})
+
+    # Full multi-model result is attached.
+    W = np.asarray(ica.amica_result_.unmixing_matrix_white_)
+    assert W.shape == (2, 6, 6)
+    assert np.asarray(ica.amica_result_.model_posteriors_).shape == (2, raw.n_times)
+
+    # Primary ICA = highest-gm model; standard MNE ops work.
+    assert ica.unmixing_matrix_.shape == (6, 6)
+    assert ica._amica_model_index == int(np.argmax(np.asarray(ica.amica_result_.gm_)))
+    assert ica.get_sources(raw).get_data().shape[0] == 6
+    assert ica.apply(raw.copy(), exclude=[]).get_data().shape == (8, raw.n_times)
+
+    # Any model is retrievable and distinct.
+    other = get_model_ica(ica, 1 - ica._amica_model_index)
+    assert other._amica_model_index != ica._amica_model_index
+    assert not np.allclose(other.unmixing_matrix_, ica.unmixing_matrix_)
+    assert np.all(np.isfinite(other.get_sources(raw).get_data()))
