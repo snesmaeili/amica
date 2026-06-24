@@ -55,10 +55,14 @@ class ChunkStats(NamedTuple):
 
 
 @jax.jit
-def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho):
+def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho, sample_weight=None):
     """Compute per-component partial stats for one chunk.
 
-    The outer caller vmaps this over components.
+    The outer caller vmaps this over components. ``sample_weight`` (an optional
+    ``(n_chunk,)`` 0/1 vector) implements likelihood-based sample rejection by
+    zero-weighting rejected samples in every M-step sum; it is ``None`` on the
+    validated no-rejection path, so that branch is removed at trace time and the
+    resulting graph is byte-identical to the original.
 
     Parameters
     ----------
@@ -99,7 +103,9 @@ def _chunk_stats_one_component(i, y_chunk, alpha, mu, beta, rho):
     n_mix = alpha_i.shape[0]
 
     def per_mix(j):
-        u = resp[j]  # (n_chunk,)
+        # Weighting the responsibility once propagates the good-mask to every
+        # downstream M-step numerator/denominator (all derive from u).
+        u = resp[j] if sample_weight is None else resp[j] * sample_weight  # (n_chunk,)
         m = mu_i[j]
         b = beta_i[j]
         r = rho_i[j]
@@ -156,6 +162,7 @@ def compute_chunk_stats(
     beta: jnp.ndarray,
     rho: jnp.ndarray,
     log_det_sphere: float,
+    sample_weight: jnp.ndarray | None = None,
 ) -> ChunkStats:
     """Compute all sufficient statistics for one time-chunk.
 
@@ -187,11 +194,17 @@ def compute_chunk_stats(
     # Sources
     y = jnp.dot(W, data_chunk)  # (n_comp, n_chunk)
 
-    # sigma2 partial (sum of y^2 over time)
-    sigma2_partial = jnp.sum(y * y, axis=1)  # (n_comp,)
-
-    # data sum for c update (placeholder; true data_white sum is tracked in solver.py)
-    data_sum = jnp.sum(data_chunk, axis=1)
+    # Per-sample good-mask weighting for sample rejection (M=1). sample_weight is
+    # None on the validated no-rejection path → the None branch is taken at trace
+    # time, so that graph is byte-identical to the original.
+    if sample_weight is None:
+        # sigma2 partial (sum of y^2 over time)
+        sigma2_partial = jnp.sum(y * y, axis=1)  # (n_comp,)
+        # data sum for c update (placeholder; true data_white sum tracked in solver.py)
+        data_sum = jnp.sum(data_chunk, axis=1)
+    else:
+        sigma2_partial = jnp.sum(sample_weight * y * y, axis=1)  # (n_comp,)
+        data_sum = jnp.sum(sample_weight * data_chunk, axis=1)
 
     # Single fused E-step pass: per-component (M-step stats, score g_i, source LL).
     # The score and the source log-likelihood are derived from the SAME
@@ -199,7 +212,7 @@ def compute_chunk_stats(
     # log-pdf is evaluated once per chunk (previously: compute_all_scores +
     # compute_source_loglikelihood each re-evaluated it).
     stats9, g, source_ll_per_comp = jax.vmap(
-        lambda i: _chunk_stats_one_component(i, y, alpha, mu, beta, rho)
+        lambda i: _chunk_stats_one_component(i, y, alpha, mu, beta, rho, sample_weight)
     )(jnp.arange(n_comp))
     # stats9: tuple of 9 arrays each (n_comp, n_mix) -> transpose to (n_mix, n_comp)
     (u_sum, mu_n, mu_d_le2, mu_d_gt2, beta_d_le2, beta_d_gt2, rho_n, kappa_n, lambda_n) = [
@@ -214,7 +227,12 @@ def compute_chunk_stats(
     source_ll = jnp.sum(source_ll_per_comp, axis=0)  # (n_chunk,)
     log_det_W = compute_log_det_W(W)
     ll_per_sample = source_ll + log_det_W + log_det_sphere
-    ll_sum = jnp.sum(ll_per_sample)
+    if sample_weight is None:
+        ll_sum = jnp.sum(ll_per_sample)
+        n_eff = jnp.asarray(n_chunk, dtype=jnp.float64)
+    else:
+        ll_sum = jnp.sum(sample_weight * ll_per_sample)
+        n_eff = jnp.sum(sample_weight).astype(jnp.float64)
 
     return ChunkStats(
         gy_partial=gy_partial,
@@ -230,7 +248,7 @@ def compute_chunk_stats(
         kappa_numer=kappa_n,
         lambda_numer=lambda_n,
         ll_sum=ll_sum,
-        n_chunk=jnp.asarray(n_chunk, dtype=jnp.float64),
+        n_chunk=n_eff,
     )
 
 

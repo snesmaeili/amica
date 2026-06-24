@@ -91,6 +91,30 @@ def test_amica_result_attached(mne):
     assert ica.amica_result_ is not None
 
 
+def test_fit_ica_sample_rejection(mne):
+    """fit_ica(fit_params={do_reject:True}) runs AMICA likelihood-based sample
+    rejection and exposes the mask on ica.amica_result_; planted spikes are flagged
+    (the mask indexes the fit-input samples)."""
+    from amica_python import fit_ica
+
+    raw = _make_raw(mne, n_ch=6, n_samp=3000)
+    data = raw.get_data()
+    rng = np.random.RandomState(11)
+    spike_idx = rng.choice(raw.n_times, size=raw.n_times // 20, replace=False)
+    data[:, spike_idx] *= 40.0
+    raw_c = mne.io.RawArray(data, raw.info)
+
+    ica = fit_ica(
+        raw_c, n_components=4, max_iter=40,
+        fit_params={"do_reject": True, "rejstart": 8, "rejint": 5,
+                    "numrej": 3, "rejsig": 3.0, "do_newton": False},
+    )
+    mask = ica.amica_result_.sample_mask_
+    assert mask is not None and mask.shape == (raw.n_times,) and mask.dtype == bool
+    assert ica.amica_result_.n_rejected_ == int((~mask).sum()) > 0
+    assert (~mask)[spike_idx].mean() > 0.5  # most planted spikes flagged
+
+
 def test_apply_preserves_shape(mne):
     """ica.apply() preserves data shape; full-rank round-trip is machine-precise."""
     from amica_python import fit_ica

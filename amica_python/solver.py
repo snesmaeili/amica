@@ -51,6 +51,41 @@ ParamConfig = namedtuple(
 )
 
 
+def _reject_threshold(sample_lls, good_mask, rejsig):
+    """Fortran-faithful one-sided likelihood-rejection threshold (amica17 ``reject_data``).
+
+    Computes the mean and (population, ddof=0) std of the per-sample log-likelihood
+    over the **current good samples only**, then rejects samples whose LL is below
+    ``mean - rejsig*std``. The returned mask is the cumulative-AND of the prior mask
+    with the keep test, so a once-rejected sample is **never re-accepted** — matching
+    the monotone behavior of Fortran AMICA 1.7 (its ``reject_data`` loop iterates only
+    the current good indices and only ever flips ``gooddata`` to false).
+
+    Parameters
+    ----------
+    sample_lls : np.ndarray, shape (n_samples,)
+        Per-sample total log-likelihood, evaluated over all samples.
+    good_mask : np.ndarray of bool, shape (n_samples,)
+        Current good-sample mask (True = kept).
+    rejsig : float
+        Rejection threshold expressed in standard deviations below the mean.
+
+    Returns
+    -------
+    new_mask : np.ndarray of bool
+        Updated good mask (a monotone subset of ``good_mask``).
+    n_newly_rejected : int
+        Number of samples rejected in this round.
+    """
+    good_lls = sample_lls[good_mask]
+    ll_mean = float(good_lls.mean())
+    ll_std = float(good_lls.std())  # ddof=0 → sqrt(E[x^2]-E[x]^2), matches Fortran
+    threshold = ll_mean - rejsig * ll_std
+    new_mask = good_mask & (sample_lls >= threshold)
+    n_newly_rejected = int(good_mask.sum() - new_mask.sum())
+    return new_mask, n_newly_rejected
+
+
 @partial(
     jax.jit,
     # Stage 3F: donate the previous-iteration state buffers (W,A,c,alpha,mu,beta,
@@ -324,6 +359,7 @@ def _amica_step_chunked(
     update_beta,
     update_rho,
     chunk_size: int,
+    sample_weight=None,
 ):
     """Chunked-accumulator version of _amica_step for CPU memory scalability.
 
@@ -439,12 +475,22 @@ def _amica_step_chunked(
     for start in range(0, n_samples, chunk_size):
         stop = min(start + chunk_size, n_samples)
         data_chunk = data_white[:, start:stop] - c[:, None]  # pre-center
-        stats = compute_chunk_stats(data_chunk, W, alpha, mu, beta, rho, log_det_sphere)
+        # sample_weight (None on the no-rejection path) zero-weights rejected
+        # samples; slice it with the data so the partial sums stay aligned.
+        w_chunk = None if sample_weight is None else sample_weight[start:stop]
+        stats = compute_chunk_stats(
+            data_chunk, W, alpha, mu, beta, rho, log_det_sphere, w_chunk
+        )
         totals = add_stats(totals, stats)
         # Track uncentered data sum separately for c update
-        data_sum_total = data_sum_total + jnp.sum(data_white[:, start:stop], axis=1)
+        if sample_weight is None:
+            data_sum_total = data_sum_total + jnp.sum(data_white[:, start:stop], axis=1)
+        else:
+            data_sum_total = data_sum_total + jnp.sum(
+                w_chunk * data_white[:, start:stop], axis=1
+            )
 
-    n_total = float(n_samples)
+    n_total = float(n_samples) if sample_weight is None else jnp.sum(sample_weight)
     ll = totals.ll_sum / n_total / n_components  # match compute_average_loglikelihood
 
     # --- Natural gradient ---
@@ -606,6 +652,7 @@ def _amica_step_fused(
     update_mu,
     update_beta,
     update_rho,
+    sample_weight=None,
 ):
     """Single-graph fused full-batch step (Stage 3D).
 
@@ -637,12 +684,21 @@ def _amica_step_fused(
     n_samples = data_white.shape[1]      # static (shape) → Python int
     n_components = W.shape[0]
     dtype = W.dtype
-    n_total = float(n_samples)
 
     # --- E-step: single fused pass over the whole batch ---
     data_centered = data_white - c[:, None]
-    totals = compute_chunk_stats(data_centered, W, alpha, mu, beta, rho, log_det_sphere)
-    data_sum_total = jnp.sum(data_white, axis=1)
+    # sample_weight is None on the validated no-rejection path → these branches
+    # resolve at trace time and that graph is byte-identical to the original.
+    if sample_weight is None:
+        n_total = float(n_samples)
+        totals = compute_chunk_stats(data_centered, W, alpha, mu, beta, rho, log_det_sphere)
+        data_sum_total = jnp.sum(data_white, axis=1)
+    else:
+        n_total = jnp.sum(sample_weight)
+        totals = compute_chunk_stats(
+            data_centered, W, alpha, mu, beta, rho, log_det_sphere, sample_weight
+        )
+        data_sum_total = jnp.sum(sample_weight * data_white, axis=1)
 
     ll = totals.ll_sum / n_total / n_components
 
@@ -879,6 +935,13 @@ class AmicaResult:
         Number of iterations performed.
     converged : bool
         Whether the algorithm converged.
+    sample_mask_ : np.ndarray of bool or None, shape (n_samples,)
+        Likelihood-based sample-rejection mask over the fit-input samples
+        (True = kept). ``None`` when ``do_reject`` was off or never fired.
+        Single-model only; indexes the data passed to ``fit`` (post-decim /
+        post-epoch-reject), not the original recording times.
+    n_rejected_ : int
+        Number of samples rejected (``(~sample_mask_).sum()``); 0 if no rejection.
     """
 
     unmixing_matrix_white_: np.ndarray
@@ -903,6 +966,10 @@ class AmicaResult:
     # Multi-model only (num_models > 1): the model-posterior time-course
     # p(h|t), shape (n_models, n_samples). None for single-model fits.
     model_posteriors_: np.ndarray | None = None
+    # Likelihood-based sample rejection (single-model do_reject). Boolean mask
+    # over the fit-input samples, True = kept; None when rejection was not run.
+    sample_mask_: np.ndarray | None = None
+    n_rejected_: int = 0
 
     def to_mne(self, info):
         """Convert results to MNE ICA object.
@@ -1340,8 +1407,11 @@ class Amica:
         # Initial ll_prev for first iteration
         ll_prev_val = -np.inf
 
-        # Sample rejection state
+        # Sample rejection state (single-model likelihood rejection)
         rej_count = 0  # Number of rejection passes done
+        n_samples_orig = data_white.shape[1]  # mask is indexed over these samples
+        good_mask = None  # bool (n_samples_orig,), lazily created on the first rejection
+        sample_weight_jax = None  # jnp 0/1 mask passed to the M=1 step; None = no rejection
 
         # Convert config flags to static arguments once
         do_newton_static = self.config.do_newton
@@ -1376,19 +1446,23 @@ class Amica:
         else:
             _eff_chunk_size = None  # None = full batch
 
+        # Single-model likelihood rejection passes a per-sample good-mask as the
+        # trailing `sample_weight` kwarg; every variant accepts it but only the
+        # M=1 fused/chunked paths use it (multimodel ignores; classic rejects).
         _multimodel = self.config.num_models > 1
         if _eff_chunk_size is not None:
             _cs = _eff_chunk_size
             if _multimodel:
-                def _step_fn(*args, _cs=_cs):
+                def _step_fn(*args, sample_weight=None, _cs=_cs):
                     return _amica_step_multimodel_chunked(*args, chunk_size=_cs)
             else:
                 # Chunked single-model path is the fused single-pass accumulator.
-                def _step_fn(*args, _cs=_cs):
-                    return _amica_step_chunked(*args, chunk_size=_cs)
+                def _step_fn(*args, sample_weight=None, _cs=_cs):
+                    return _amica_step_chunked(*args, chunk_size=_cs, sample_weight=sample_weight)
         elif _multimodel:
-            # Full-batch multi-model: v-weighted per-model E/M-step.
-            _step_fn = _amica_step_multimodel
+            # Full-batch multi-model: v-weighted per-model E/M-step (rejection is M=1 only).
+            def _step_fn(*args, sample_weight=None):
+                return _amica_step_multimodel(*args)
         else:
             # Full-batch single-model: choose fused (default) vs classic.
             # "auto" resolves to fused — numerically equivalent to classic
@@ -1396,9 +1470,17 @@ class Amica:
             # "classic" is the parity oracle / exact-reproduction escape hatch.
             _estep = self.config.estep
             if _estep == "classic":
-                _step_fn = _amica_step
+                def _step_fn(*args, sample_weight=None):
+                    if sample_weight is not None:
+                        raise NotImplementedError(
+                            "Likelihood-based sample rejection requires the fused "
+                            "E-step (estep='auto' or 'fused'); it is not implemented "
+                            "for estep='classic'."
+                        )
+                    return _amica_step(*args)
             else:  # "auto" or "fused"
-                _step_fn = _amica_step_fused
+                def _step_fn(*args, sample_weight=None):
+                    return _amica_step_fused(*args, sample_weight=sample_weight)
 
         # Ensure initial state is JAX array with correct dtype
         W = jnp.asarray(W, dtype=dtype)
@@ -1479,6 +1561,7 @@ class Amica:
                 update_mu_static,
                 update_beta_static,
                 update_rho_static,
+                sample_weight=sample_weight_jax,
             )
 
             # Stage 3F: always accept the (guarded) state. On a bad step each
@@ -1513,8 +1596,12 @@ class Amica:
 
             LL.append(ll_val)
 
-            # ========== Sample Rejection ==========
-            # (single-model only; the per-sample LL below assumes 2D W/c)
+            # ========== Sample Rejection (single-model, Fortran 1.7 do_reject) ==========
+            # Monotone cumulative mask, faithful to amica17 reject_data: each round
+            # recomputes the threshold mean - rejsig*std of the per-sample LL over the
+            # CURRENT good samples and drops those below it. Rejected samples are never
+            # re-accepted and are zero-weighted in the EM via `sample_weight` (the data
+            # is NOT subsetted). M=1 only — the per-sample LL assumes 2D W/c.
             if (
                 self.config.num_models == 1
                 and self.config.do_reject
@@ -1522,35 +1609,26 @@ class Amica:
                 and rej_count < self.config.numrej
                 and (iteration - self.config.rejstart) % self.config.rejint == 0
             ):
-                # Compute per-sample LL
+                # Per-sample total LL over ALL samples (data space).
                 y_rej = jnp.dot(W, data_white - c[:, None])
                 sample_lls = compute_source_loglikelihood(y_rej, alpha, mu, beta, rho)
-                sample_lls = sample_lls + compute_log_det_W(W) + log_det_sphere
+                sample_lls = np.asarray(sample_lls + compute_log_det_W(W) + log_det_sphere)
 
-                # Rejection threshold: mean - rejsig * std
-                ll_mean = jnp.mean(sample_lls)
-                ll_std = jnp.std(sample_lls)
-                threshold = ll_mean - self.config.rejsig * ll_std
-
-                new_mask = sample_lls >= threshold
-                n_rejected = int(jnp.sum(~new_mask))
-                max_reject = int(0.2 * n_samples)  # Cap at 20%
-
-                if n_rejected <= max_reject:
-                    rej_count += 1
-                    if iteration % 10 == 0:
-                        pct = 100.0 * n_rejected / n_samples
-                        logger.info(
-                            "Iter %d: Rejected %d samples (%.1f%%)", iteration, n_rejected, pct
-                        )
-
-                    # Subset data to non-rejected samples
-                    mask_np = np.asarray(new_mask)
-                    kept_idx = np.where(mask_np)[0]
-                    data_white = jnp.asarray(np.asarray(data_white)[:, kept_idx])
-                    n_samples = data_white.shape[1]
-                    # TODO: store final mask_np in AmicaResult so callers can identify
-                    # rejected samples (e.g. test_rejection_behavioral could assert spikes flagged)
+                if good_mask is None:
+                    good_mask = np.ones(n_samples_orig, dtype=bool)
+                good_mask, _n_newly = _reject_threshold(
+                    sample_lls, good_mask, self.config.rejsig
+                )
+                rej_count += 1
+                # Flip on the JAX weight (None -> 0/1 array on the first rejection round).
+                sample_weight_jax = jnp.asarray(good_mask.astype(np.float64), dtype=dtype)
+                n_rej_total = int((~good_mask).sum())
+                if iteration % 10 == 0 or rej_count == 1:
+                    logger.info(
+                        "Iter %d: rejection round %d — %d/%d samples rejected (%.2f%%)",
+                        iteration, rej_count, n_rej_total, n_samples_orig,
+                        100.0 * n_rej_total / n_samples_orig,
+                    )
 
             dll = ll_val - ll_prev_val
             if iteration > 0 and self.config.use_min_dll:
@@ -1667,6 +1745,8 @@ class Amica:
             converged=converged,
             data_scale=scaling_factor,
             model_posteriors_=model_posteriors,
+            sample_mask_=good_mask,
+            n_rejected_=int((~good_mask).sum()) if good_mask is not None else 0,
         )
 
         assert self.result_ is not None
