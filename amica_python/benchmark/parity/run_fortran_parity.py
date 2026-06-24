@@ -169,6 +169,16 @@ def cmd_compare(args):
 
     fr = fio.read_fortran_results(wd / "out", n_components=nc, n_mixtures=m, n_features=nc)
 
+    # If the Fortran run diverged (non-finite W/LL) parity is not computable — report
+    # it cleanly instead of crashing the Hungarian match on a NaN matrix.
+    if not (np.all(np.isfinite(fr["W"])) and fr["LL_clean"].size):
+        out = dict(config=meta, fortran_diverged=True,
+                   fortran_n_iter=int(fr["n_iter"]),
+                   note="Fortran W/LL non-finite (diverged); parity not computable")
+        (wd / "parity.json").write_text(json.dumps(out, indent=2), newline="\n")
+        print(json.dumps(out, indent=2))
+        return out
+
     # amica-python's fix_init reproduces AMICA 1.7's deterministic init exactly
     # (A=identity -> W0=I; mu_j=(j-1)-(m-1)/2; beta=1; rho=rho0=1.5; alpha uniform; c=0).
     # We additionally reuse Fortran's *computed sphere* + mean so the whitened data is

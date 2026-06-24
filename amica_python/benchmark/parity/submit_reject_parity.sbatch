@@ -41,7 +41,7 @@ python -c "import sys, numpy, amica_python; print('py', sys.executable, '| amica
 mkdir -p "$WORK"
 python -m amica_python.benchmark.parity.run_fortran_parity prep \
     --workdir "$WORK" --dataset synth6 --n-channels 6 --n-samples 20000 \
-    --m 3 --do-newton 1 --max-iter 200 \
+    --m 3 --do-newton 0 --max-iter 300 \
     --reject --spike-frac 0.03 --spike-amp 40 --rejsig 3.0 --numrej 1 --rejstart 3 --rejint 2 \
     --container-data "$WORK/data" --container-out "$WORK/out"
 
