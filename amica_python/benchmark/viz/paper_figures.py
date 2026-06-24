@@ -1114,7 +1114,12 @@ def plot_mir_comparison(bench_df: pd.DataFrame, out_dir: Path, captions_dir: Pat
                 fontsize=8,
             )
 
-        fig.suptitle("MIR comparison", x=0.01, y=1.02, ha="left", fontweight="bold")
+        import os as _os
+        if _os.environ.get("AMICA_NO_RUN_MODE_BANNER") != "1":
+            # The "MIR comparison" supertitle is redundant when the figure is
+            # embedded with a LaTeX (sub)caption in the paper; drop it on the
+            # same paper-ready signal that suppresses the run-mode banner.
+            fig.suptitle("MIR comparison", x=0.01, y=1.02, ha="left", fontweight="bold")
         _apply_run_mode_banner(fig, bench_df, y=1.035)
         diff_paths = _save(fig, out_dir, "fig04_mir_difference")
         plt.close(fig)

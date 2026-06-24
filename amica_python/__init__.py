@@ -1,8 +1,8 @@
 """amica-python: Native Python AMICA for MNE-Python.
 
 Adaptive Mixture Independent Component Analysis (AMICA) with JAX
-acceleration. Designed as a drop-in ICA method for MNE-Python,
-following the Picard integration pattern.
+acceleration. Designed as a native ICA method for MNE-Python
+(via ``mne.preprocessing.ICA``).
 
 References
 ----------
@@ -22,7 +22,7 @@ from .metrics import (
     rho_range,
     source_kurtosis,
 )
-from .mne_integration import fit_ica
+from .mne_integration import fit_ica, get_model_ica
 from .solver import Amica, AmicaResult, amica
 from .viz import (
     plot_component_metrics,
@@ -40,6 +40,7 @@ __all__ = [
     "AmicaResult",
     "amica",
     "fit_ica",
+    "get_model_ica",
     "rho_mean",
     "rho_range",
     "mixture_entropy",

@@ -2013,15 +2013,15 @@ def amica(
 ):
     """Adaptive Mixture ICA (AMICA).
 
-    Follows the :func:`picard.picard` calling convention so it can be used
-    as a drop-in replacement in custom pipelines and in MNE-Python's
+    Returns the ``(K, W, Y)`` tuple MNE-Python's ICA dispatch expects (the
+    calling convention shared by its fastica/infomax/picard methods), used in MNE-Python's
     ``ICA`` dispatch (``method='amica'``).
 
     Parameters
     ----------
     X : ndarray, shape (n_features, n_samples)
-        Pre-whitened data, features × samples.  This matches the picard
-        convention; MNE passes ``data[:, sel].T`` which gives
+        Pre-whitened data, features × samples.  This matches MNE's
+        ICA-method convention; MNE passes ``data[:, sel].T`` which gives
         (n_components, n_samples).
     n_components : int or None
         Number of components. If None, uses X.shape[0].
@@ -2043,7 +2043,7 @@ def amica(
     -------
     K : None
         Pre-whitening matrix.  Always None when ``whiten=False``.
-        Included for picard API compatibility; MNE discards this value.
+        Included for the MNE ICA-method signature; MNE discards this value.
     W : ndarray, shape (n_components, n_components)
         Unmixing matrix (operates on whitened data).
     Y : ndarray, shape (n_components, n_samples)
@@ -2067,7 +2067,7 @@ def amica(
     solver = Amica(config, random_state=random_state)
     result = solver.fit(X)
 
-    K = None  # whiten=False: MNE pre-whitens; kept for picard API parity
+    K = None  # whiten=False: MNE pre-whitens; kept for the MNE ICA-method signature
     W = result.unmixing_matrix_white_  # (n_components, n_components)
     Y = W @ X                          # (n_components, n_samples)
 

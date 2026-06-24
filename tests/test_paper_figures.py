@@ -4,6 +4,7 @@ from pathlib import Path
 
 import matplotlib
 import pandas as pd
+import pytest
 
 matplotlib.use("Agg")
 
@@ -199,6 +200,11 @@ def test_paired_mir_difference_collapses_amica_reference_label(monkeypatch, tmp_
 
 def test_comparator_sbatch_scripts_enable_dipole_artifacts():
     repo = Path(__file__).resolve().parents[1]
+    if not (repo / "scripts" / "cc_benchmark").exists():
+        pytest.skip(
+            "cc_benchmark sbatch scripts live on the benchmark/compute-canada-paper "
+            "branch, not the lean library"
+        )
     for script_name in [
         "submit_picard_cpu_v3.sh",
         "submit_fastica_cpu_v3.sh",

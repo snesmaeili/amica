@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "amica-python"
-version = "0.0.1"
+version = "0.1.0"
 description = "Native Python AMICA (Adaptive Mixture ICA) for MNE-Python"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}
