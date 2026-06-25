@@ -156,20 +156,43 @@ def fit_ica(
     picks : str | array-like | None
         Channels to use for ICA.
     reject : dict | None
-        Epoch rejection parameters.
+        MNE-style **epoch amplitude** rejection (e.g. ``dict(eeg=100e-6)``): whole
+        fixed-length epochs exceeding the threshold are dropped *before* fitting.
+        Distinct from AMICA's likelihood-based sample rejection (see Notes).
     flat : dict | None
         Flat channel rejection parameters.
     decim : int | None
         Decimation factor.
     fit_params : dict | None
-        Additional parameters passed to AmicaConfig.
+        Additional parameters forwarded to :class:`~amica_python.config.AmicaConfig`,
+        e.g. ``dict(do_reject=True, rejsig=3.0)`` to enable AMICA's per-sample
+        likelihood rejection (see Notes).
     verbose : bool | None
         Verbosity.
 
     Returns
     -------
     ica : mne.preprocessing.ICA
-        Fitted ICA object with AMICA decomposition.
+        Fitted ICA object with AMICA decomposition. The full result is attached as
+        ``ica.amica_result_``.
+
+    Notes
+    -----
+    **Sample rejection** — two independent mechanisms, not to be confused:
+
+    - ``reject`` / ``flat`` drop bad *epochs* by amplitude *before* the
+      decomposition (standard MNE preprocessing).
+    - AMICA's own ``do_reject`` (single-model only) drops individual outlier
+      *samples* by their model log-likelihood *during* EM, faithful to Fortran
+      AMICA 1.7. Enable it via ``fit_params``::
+
+          ica = fit_ica(raw, n_components=20,
+                        fit_params=dict(do_reject=True, rejsig=3.0))
+          mask = ica.amica_result_.sample_mask_   # bool, True = kept
+          n_dropped = ica.amica_result_.n_rejected_
+
+      ``sample_mask_`` indexes the samples passed to the fit (after any ``decim`` /
+      epoch ``reject``), not ``raw.times``.
 
     Examples
     --------

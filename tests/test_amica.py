@@ -700,6 +700,10 @@ def test_rejection_path(tiny_data):
     solver = Amica(config, random_state=42)
     res = solver.fit(tiny_data)
     assert res.n_iter == 2
+    # Rejection ran (rejstart=1) → the mask is exposed over the input samples.
+    assert res.sample_mask_ is not None
+    assert res.sample_mask_.shape == (tiny_data.shape[1],)
+    assert res.n_rejected_ == int((~res.sample_mask_).sum()) >= 0
 
 
 def test_rejection_behavioral():
@@ -756,6 +760,99 @@ def test_rejection_behavioral():
     ll_no = res_no.log_likelihood[-1]
     assert ll_rej > ll_no, (
         f"Rejection did not improve LL: with_reject={ll_rej:.4f}, no_reject={ll_no:.4f}"
+    )
+
+    # The rejected-sample mask is exposed and flags the planted spikes.
+    mask = res_rej.sample_mask_
+    assert mask is not None and mask.shape == (n_samp,) and mask.dtype == bool
+    rejected = ~mask
+    spike_recall = rejected[spike_idx].mean()  # planted spikes that got flagged
+    assert spike_recall > 0.5, f"only {spike_recall:.0%} of planted spikes flagged"
+    assert rejected.mean() < 0.2, f"rejected too much clean data: {rejected.mean():.0%}"
+    assert res_rej.n_rejected_ == int(rejected.sum())
+    # do_reject=False leaves the mask unset (no rejection ran).
+    assert res_no.sample_mask_ is None and res_no.n_rejected_ == 0
+
+
+def test_rejection_threshold_rule():
+    """_reject_threshold: one-sided lower cut at mean - rejsig*std over the current
+    good set, and monotone (a rejected sample is never re-accepted)."""
+    from amica_python.solver import _reject_threshold
+
+    lls = np.zeros(100)
+    lls[50] = -10.0  # one clear low outlier
+    mask0 = np.ones(100, dtype=bool)
+
+    mask1, n1 = _reject_threshold(lls, mask0, rejsig=3.0)
+    assert n1 == 1 and not mask1[50] and mask1.sum() == 99
+    # Re-running over the new good set never re-accepts the rejected sample.
+    mask2, _ = _reject_threshold(lls, mask1, rejsig=3.0)
+    assert not mask2[50]
+    assert mask2.sum() <= mask1.sum()  # monotone non-increasing good count
+
+
+def test_rejection_no_reacceptance():
+    """A sample rejected early is never re-accepted across rounds (Fortran-faithful)."""
+    from amica_python import Amica, AmicaConfig
+
+    rng = np.random.RandomState(3)
+    data = rng.laplace(size=(5, 1500))
+    data[:, 100] *= 80.0  # one extreme spike → rejected early
+    cfg = AmicaConfig(max_iter=40, do_newton=False, do_reject=True,
+                      rejstart=5, rejint=5, numrej=3, rejsig=3.0)
+    res = Amica(cfg, random_state=0).fit(data)
+    assert res.sample_mask_ is not None
+    assert not res.sample_mask_[100]  # the spike is rejected and stays rejected
+
+
+def test_reject_weight_anchor():
+    """All-ones weight ≡ unweighted: a do_reject fit that rejects nothing (rejsig
+    huge) reproduces a no-rejection fit, and do_reject=False leaves the mask unset."""
+    from amica_python import Amica, AmicaConfig
+
+    rng = np.random.RandomState(1)
+    data = rng.laplace(size=(4, 1000))
+
+    res_no = Amica(AmicaConfig(max_iter=20, do_newton=False), random_state=0).fit(data)
+    assert res_no.sample_mask_ is None and res_no.n_rejected_ == 0
+
+    # rejsig huge → threshold far below every LL → nothing rejected → weight all 1s.
+    cfg_rej = AmicaConfig(max_iter=20, do_newton=False, do_reject=True,
+                          rejstart=5, rejint=5, numrej=3, rejsig=1e6)
+    res_rej = Amica(cfg_rej, random_state=0).fit(data)
+    assert res_rej.sample_mask_ is not None and res_rej.n_rejected_ == 0
+    assert res_rej.sample_mask_.all()
+    # The all-ones weight path matches the unweighted path (modulo XLA reassociation).
+    np.testing.assert_allclose(
+        res_rej.unmixing_matrix_white_, res_no.unmixing_matrix_white_,
+        rtol=1e-5, atol=1e-7,
+    )
+
+
+def test_rejection_chunked_matches_fused():
+    """Rejection mask + W agree between the full-batch (fused) and chunked paths."""
+    from amica_python import Amica, AmicaConfig
+
+    rng = np.random.RandomState(5)
+    data = rng.laplace(size=(5, 1200))
+    spikes = [50, 600, 900]
+    data[:, spikes] *= 60.0
+    common = dict(max_iter=40, do_newton=False, do_reject=True,
+                  rejstart=8, rejint=6, numrej=2, rejsig=3.0)
+
+    res_full = Amica(AmicaConfig(**common, chunk_size=None), random_state=0).fit(data)
+    res_chunk = Amica(AmicaConfig(**common, chunk_size=137), random_state=0).fit(data)
+
+    # Both paths reject the spikes.
+    for s in spikes:
+        assert not res_full.sample_mask_[s] and not res_chunk.sample_mask_[s]
+    # Masks agree on the vast majority (borderline clean samples may differ by a few
+    # due to fused-vs-chunked float rounding in the per-sample LL).
+    agree = (res_full.sample_mask_ == res_chunk.sample_mask_).mean()
+    assert agree > 0.99, f"chunked/fused masks agree on only {agree:.3%}"
+    np.testing.assert_allclose(
+        res_full.unmixing_matrix_white_, res_chunk.unmixing_matrix_white_,
+        rtol=1e-3, atol=1e-5,
     )
 
 
