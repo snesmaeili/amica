@@ -54,6 +54,30 @@ Identical start state isolates pure algorithmic agreement. From `parity_result_s
 
 **Conclusion:** amica-python reproduces AMICA 1.7 to optimizer precision.
 
+## Sample-rejection (`do_reject`) parity (synth6 + planted spikes, fix_init, natural gradient)
+Validates single-model likelihood-based sample rejection (`feat/reject-mask`) against Fortran
+1.7's `do_reject`. Identical contaminated data (200 spikes at 8×), Fortran's exact
+sphere+mean+fix_init, matched `rejsig=3 / numrej=1 / rejstart`, natural gradient. Fortran's
+rejected set is read from `LLt` (`{total == 0}`; `reject_data` zeroes rejected samples'
+loglik) and compared to amica-python's `sample_mask_`. From `results/parity_reject_synth6.json`:
+
+| metric | value |
+|---|---|
+| rejected-set Jaccard | **0.994** |
+| reject recall (Fortran → ours) | **1.000** (all 174 of Fortran's also rejected by ours) |
+| n_rejected Fortran / ours | 174 / 175 (differ by 1 borderline sample) |
+| spike-recall Fortran / ours | 0.870 / 0.875 |
+
+**Conclusion:** the two implementations make the **same rejection decisions** — same threshold
+rule (`mean − rejsig·std` over the current good set), near-identical rejected sets.
+
+**Caveat (documented honestly):** Fortran 1.7's `do_reject` **optimizer** diverges to NaN ~1
+iteration after the rejection on the post-rejection data (a 1.7 robustness limitation;
+amica-python's `invsigmax` clamp + guarded steps stay finite). The rejected SET is still
+recoverable (zeroed *before* divergence), so the decision parity above is valid; the
+post-rejection W is not comparable from this build, but the no-rejection W parity above is
+machine-precision. Harness: `run_fortran_parity.py … --reject` + `submit_reject_parity.sbatch`.
+
 ## Re-running the parity end to end
 `submit_parity.sbatch` does: prep (numpy) → build (`-DMKL`) → run `amica17` →
 amica-python compare. It imports `amica_python.benchmark.parity.run_fortran_parity`
