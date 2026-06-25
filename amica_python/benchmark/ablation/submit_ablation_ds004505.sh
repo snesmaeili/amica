@@ -36,7 +36,10 @@ module load StdEnv/2023 python/3.11 scipy-stack cuda/12.6 cudnn
 export XDG_CACHE_HOME="/scratch/$USER/.cache"; mkdir -p "$XDG_CACHE_HOME"
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 source "$VENV/bin/activate"
-pip install -e "$REPO" --no-deps -q   # re-link amica_python to the M>1-rejection checkout
+# Use the M>1-rejection checkout's amica_python via PYTHONPATH (NOT a per-task
+# `pip install -e` — that races on the shared venv's editable-finder file under array
+# concurrency). PYTHONPATH is prepended to sys.path so it shadows the venv's amica_python.
+export PYTHONPATH="$REPO:${PYTHONPATH:-}"
 
 REJ_FLAG=""
 [ "$REJECT" = "1" ] && REJ_FLAG="--do-reject --rejsig 3.0 --rejstart 2 --rejint 3 --numrej 5"
