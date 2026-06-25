@@ -23,6 +23,7 @@ from .metrics import (
     source_kurtosis,
 )
 from .mne_integration import fit_ica, get_model_ica
+from .selector import SelectionReport, auto_select_amica
 from .solver import Amica, AmicaResult, amica
 from .viz import (
     plot_component_metrics,
@@ -41,6 +42,8 @@ __all__ = [
     "amica",
     "fit_ica",
     "get_model_ica",
+    "auto_select_amica",
+    "SelectionReport",
     "rho_mean",
     "rho_range",
     "mixture_entropy",

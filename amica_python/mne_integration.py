@@ -133,6 +133,8 @@ def fit_ica(
     flat=None,
     decim=None,
     fit_params: dict | None = None,
+    select: str | None = None,
+    select_params: dict | None = None,
     verbose=None,
 ):
     """Fit ICA using AMICA on MNE Raw or Epochs data.
@@ -271,6 +273,23 @@ def fit_ica(
         raw_data = scipy.signal.decimate(raw_data, decim, axis=-1, ftype="fir")
         n_samples = raw_data.shape[1]
 
+    # Optional: SCHL data-driven selection of (n_components, num_models, rejsig).
+    # Surrogate-calibrated held-out likelihood (see amica_python.selector); runs on the
+    # channel-space data (it does its own PCA/whitening internally), then the final fit
+    # below uses the selected rank + model order + rejection. EXPENSIVE (fits many small
+    # AMICA models over a CV grid + phase surrogates) — opt-in via select="auto".
+    amica_selection = None
+    if select == "auto":
+        from amica_python.selector import auto_select_amica
+        amica_selection = auto_select_amica(raw_data, **(select_params or {}))
+        n_comp = min(int(amica_selection.n_components), n_channels)
+        fit_params = {**(fit_params or {}), **amica_selection.fit_params()}
+        logger.info("SCHL auto-select: n_components=%d num_models=%d rejsig=%s",
+                    amica_selection.n_components, amica_selection.num_models,
+                    amica_selection.rejsig)
+    elif select is not None:
+        raise ValueError(f"select must be None or 'auto', got {select!r}")
+
     # Step 1: Pre-whiten (per-channel-type std normalization)
     pre_whitener = _compute_pre_whitener(raw_data, inst.info, picks_idx)
     data_pre = raw_data / pre_whitener
@@ -361,6 +380,8 @@ def fit_ica(
 
     # Attach full AMICA result for viz module
     ica.amica_result_ = result
+    # The SCHL SelectionReport, when select="auto" was used (else None).
+    ica.amica_selection_ = amica_selection
 
     # Bookkeeping so any model of a multi-model fit can be materialised later
     # (get_model_ica): the per-component normalisation and the primary index.
