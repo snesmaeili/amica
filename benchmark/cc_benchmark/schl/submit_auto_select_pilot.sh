@@ -1,12 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=schl_pilot
 #SBATCH --account=def-kjerbi_gpu
-#SBATCH --partition=gpubase_bygpu_b1
 #SBATCH --array=1-3
-#SBATCH --time=04:00:00
+#SBATCH --time=03:00:00
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=6
 #SBATCH --gres=gpu:h100:1
+# NOTE: no explicit --partition. fir auto-routes GPU jobs to the right time bucket by
+# --gres + --time (b1<=3h, b2<=12h, ...); a too-long --time on a fixed bucket is rejected.
+# n_surr=5 fits 3h (b1). For n_surr=10/20, override on submit: sbatch --time=06:00:00 ...
 #SBATCH --output=/scratch/sesma/schl_pilot/%x_%A_%a.out
 #SBATCH --error=/scratch/sesma/schl_pilot/%x_%A_%a.err
 set -euo pipefail
