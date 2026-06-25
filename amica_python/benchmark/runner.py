@@ -994,6 +994,8 @@ def _measure_peak_memory(backend, device, fn, /, *args, **kwargs):
 def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
                   n_components: int | None = None, chunk_size=None,
                   dtype: str = "float64", random_state: int = 42,
+                  num_models: int = 1, do_reject: bool = False, rejsig: float = 3.0,
+                  rejstart: int = 2, rejint: int = 3, numrej: int = 5,
                   include_artifacts=False, return_ica=False):
     """Run AMICA and record metrics.
 
@@ -1041,6 +1043,11 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
         fit_params["chunk_size"] = chunk_size
     if dtype and dtype != "float64":
         fit_params["dtype"] = dtype
+    if num_models and int(num_models) != 1:
+        fit_params["num_models"] = int(num_models)
+    if do_reject:
+        fit_params.update(do_reject=True, rejsig=float(rejsig), rejstart=int(rejstart),
+                          rejint=int(rejint), numrej=int(numrej))
 
     mem = _measure_peak_memory(backend, device, fit_ica,
                                raw, n_components=n_components,
@@ -1081,6 +1088,9 @@ def run_benchmark(raw, backend="jax", device="cpu", n_iter=500, *,
         "sfreq": float(raw.info["sfreq"]),
         "hostname": platform.node(),
         "slurm_job_id": os.environ.get("SLURM_JOB_ID", "local"),
+        "num_models": int(num_models),
+        "do_reject": bool(do_reject),
+        "n_rejected": int(getattr(amica_result_obj, "n_rejected_", 0) or 0),
     }
 
     # Separate JIT-compile cost (first iteration) from steady per-iteration cost.
@@ -1159,6 +1169,15 @@ def main():
                         help="Write legacy flat JSON or paper-compatible v3 JSON")
     parser.add_argument("--random-state", type=int, default=42,
                         help="Random seed for AMICA initialisation (seed-robustness sweeps)")
+    parser.add_argument("--num-models", type=int, default=1,
+                        help="AMICA mixture-of-models count M (1 = single-model)")
+    parser.add_argument("--do-reject", action="store_true",
+                        help="Enable AMICA likelihood-based sample rejection (do_reject)")
+    parser.add_argument("--rejsig", type=float, default=3.0,
+                        help="Rejection threshold in SD below the mean per-sample LL")
+    parser.add_argument("--rejstart", type=int, default=2)
+    parser.add_argument("--rejint", type=int, default=3)
+    parser.add_argument("--numrej", type=int, default=5)
     args = parser.parse_args()
 
     # Parse --chunk-size: accept int string or "auto"
@@ -1214,6 +1233,10 @@ def main():
             chunk_size=chunk_size,
             dtype=args.dtype,
             random_state=args.random_state,
+            num_models=args.num_models,
+            do_reject=args.do_reject,
+            rejsig=args.rejsig, rejstart=args.rejstart,
+            rejint=args.rejint, numrej=args.numrej,
             include_artifacts=args.schema_version == "v3",
             return_ica=True,
         )

@@ -132,10 +132,11 @@ class AmicaConfig:
     do_approx_sphere: bool = True
     mineig: float = 1e-12
 
-    # Likelihood-based sample rejection (single-model; Fortran 1.7 do_reject).
-    # Each round drops samples whose per-sample LL < mean - rejsig*std over the
-    # current good set (monotone, never re-accepted; rejected samples are
-    # zero-weighted, not removed). rejsig/rejstart/rejint match Fortran; numrej
+    # Likelihood-based sample rejection (Fortran 1.7 do_reject). Each round drops
+    # samples whose per-sample total LL < mean - rejsig*std over the current good set
+    # (monotone, never re-accepted; rejected samples are zero-weighted, not removed).
+    # Works for M=1 and M>1 — for M>1 a single GLOBAL mask thresholds the mixture LL
+    # logsumexp_h[log gm_h + log p(x|h)]. rejsig/rejstart/rejint match Fortran; numrej
     # follows Klug et al. 2024 (Fortran's maxrej default is 1).
     do_reject: bool = False
     rejsig: float = 3.0

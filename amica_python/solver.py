@@ -811,6 +811,7 @@ def _amica_step_multimodel(
     newt_start_iter, iteration, invsigmin, invsigmax, minrho, maxrho,
     do_newton, do_mean, do_sphere, doscaling,
     update_alpha, update_mu, update_beta, update_rho,
+    sample_weight=None,
 ):
     """Full-batch multi-model step (num_models > 1).
 
@@ -823,7 +824,7 @@ def _amica_step_multimodel(
     from .multimodel import compute_chunk_stats_mm, m_step_mm
 
     totals = compute_chunk_stats_mm(
-        data_white, W, c, alpha, mu, beta, rho, gm, log_det_sphere
+        data_white, W, c, alpha, mu, beta, rho, gm, log_det_sphere, sample_weight
     )
     n_total = totals.n_chunk
     return m_step_mm(
@@ -841,6 +842,7 @@ def _amica_step_multimodel_chunked(
     do_newton, do_mean, do_sphere, doscaling,
     update_alpha, update_mu, update_beta, update_rho,
     chunk_size,
+    sample_weight=None,
 ):
     """Chunked multi-model step: Python time-loop + one M-step on the totals.
 
@@ -863,15 +865,18 @@ def _amica_step_multimodel_chunked(
     start = 0
     while start < n_samples:
         end = min(start + chunk_size, n_samples)
+        w_chunk = None if sample_weight is None else sample_weight[start:end]
         totals = add_stats_mm(
             totals,
             compute_chunk_stats_mm(
-                data_white[:, start:end], W, c, alpha, mu, beta, rho, gm, log_det_sphere
+                data_white[:, start:end], W, c, alpha, mu, beta, rho, gm, log_det_sphere, w_chunk
             ),
         )
         start = end
 
-    n_total = jnp.asarray(n_samples, dtype=W.dtype)
+    # n_chunk now carries the effective good-sample count: == n_samples with no
+    # rejection, == sum(sample_weight) when rejecting (so gm/ll normalize correctly).
+    n_total = totals.n_chunk
     return m_step_mm(
         totals, W, A, c, alpha, mu, beta, rho, gm, n_total,
         lrate_step, rholrate, iteration, newt_start_iter,
@@ -1446,23 +1451,26 @@ class Amica:
         else:
             _eff_chunk_size = None  # None = full batch
 
-        # Single-model likelihood rejection passes a per-sample good-mask as the
-        # trailing `sample_weight` kwarg; every variant accepts it but only the
-        # M=1 fused/chunked paths use it (multimodel ignores; classic rejects).
+        # Likelihood rejection passes a per-sample good-mask as the trailing
+        # `sample_weight` kwarg; the single-model fused/chunked AND the multimodel
+        # paths use it (a None mask = no rejection; classic rejects a non-None mask).
         _multimodel = self.config.num_models > 1
         if _eff_chunk_size is not None:
             _cs = _eff_chunk_size
             if _multimodel:
                 def _step_fn(*args, sample_weight=None, _cs=_cs):
-                    return _amica_step_multimodel_chunked(*args, chunk_size=_cs)
+                    return _amica_step_multimodel_chunked(
+                        *args, chunk_size=_cs, sample_weight=sample_weight
+                    )
             else:
                 # Chunked single-model path is the fused single-pass accumulator.
                 def _step_fn(*args, sample_weight=None, _cs=_cs):
                     return _amica_step_chunked(*args, chunk_size=_cs, sample_weight=sample_weight)
         elif _multimodel:
-            # Full-batch multi-model: v-weighted per-model E/M-step (rejection is M=1 only).
+            # Full-batch multi-model: v-weighted per-model E/M-step; a rejection mask
+            # is applied globally across models (folded into the per-sample posteriors).
             def _step_fn(*args, sample_weight=None):
-                return _amica_step_multimodel(*args)
+                return _amica_step_multimodel(*args, sample_weight=sample_weight)
         else:
             # Full-batch single-model: choose fused (default) vs classic.
             # "auto" resolves to fused — numerically equivalent to classic
@@ -1596,23 +1604,31 @@ class Amica:
 
             LL.append(ll_val)
 
-            # ========== Sample Rejection (single-model, Fortran 1.7 do_reject) ==========
+            # ========== Sample Rejection (Fortran 1.7 do_reject) ==========
             # Monotone cumulative mask, faithful to amica17 reject_data: each round
-            # recomputes the threshold mean - rejsig*std of the per-sample LL over the
-            # CURRENT good samples and drops those below it. Rejected samples are never
-            # re-accepted and are zero-weighted in the EM via `sample_weight` (the data
-            # is NOT subsetted). M=1 only — the per-sample LL assumes 2D W/c.
+            # recomputes the threshold mean - rejsig*std of the per-sample TOTAL LL over
+            # the CURRENT good samples and drops those below it. Rejected samples are
+            # never re-accepted and are zero-weighted in the EM via `sample_weight` (the
+            # data is NOT subsetted). For M>1 rejection is GLOBAL across models, on the
+            # mixture LL (matches Fortran's single global good-mask).
             if (
-                self.config.num_models == 1
-                and self.config.do_reject
+                self.config.do_reject
                 and iteration >= self.config.rejstart
                 and rej_count < self.config.numrej
                 and (iteration - self.config.rejstart) % self.config.rejint == 0
             ):
-                # Per-sample total LL over ALL samples (data space).
-                y_rej = jnp.dot(W, data_white - c[:, None])
-                sample_lls = compute_source_loglikelihood(y_rej, alpha, mu, beta, rho)
-                sample_lls = np.asarray(sample_lls + compute_log_det_W(W) + log_det_sphere)
+                # Per-sample TOTAL LL over ALL samples (data space). M>1 = the mixture LL
+                # logsumexp_h[log gm_h + log p(x_t|h)]; M=1 = the single-model LL.
+                if self.config.num_models == 1:
+                    y_rej = jnp.dot(W, data_white - c[:, None])
+                    sample_lls = compute_source_loglikelihood(y_rej, alpha, mu, beta, rho)
+                    sample_lls = np.asarray(sample_lls + compute_log_det_W(W) + log_det_sphere)
+                else:
+                    from .multimodel import _model_posteriors_from_data
+                    _P, _LL_t, _v, _y = _model_posteriors_from_data(
+                        data_white, W, c, alpha, mu, beta, rho, gm, log_det_sphere
+                    )
+                    sample_lls = np.asarray(_LL_t)
 
                 if good_mask is None:
                     good_mask = np.ones(n_samples_orig, dtype=bool)
