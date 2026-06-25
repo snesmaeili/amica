@@ -339,6 +339,31 @@ def test_multimodel_recovers_two_regimes():
     assert np.allclose(np.sort(np.asarray(r2.gm_)), [0.5, 0.5], atol=0.15)
 
 
+def test_multimodel_rejection():
+    """M>1 likelihood sample rejection: planted spikes are flagged in sample_mask_
+    (one global mask across models, thresholding the mixture LL), and do_reject=False
+    leaves the mask unset (the multimodel anchor)."""
+    from amica_python import Amica, AmicaConfig
+
+    rng = np.random.RandomState(0)
+    data = rng.laplace(size=(5, 1500))
+    spikes = [100, 500, 900]
+    data[:, spikes] *= 60.0
+
+    common = dict(num_models=2, max_iter=40, do_newton=False)
+    res = Amica(AmicaConfig(**common, do_reject=True, rejstart=5, rejint=5,
+                            numrej=2, rejsig=3.0), random_state=0).fit(data)
+    assert res.sample_mask_ is not None
+    assert res.sample_mask_.shape == (1500,) and res.sample_mask_.dtype == bool
+    assert res.n_rejected_ == int((~res.sample_mask_).sum()) > 0
+    assert (~res.sample_mask_)[spikes].all()  # global mask rejects the spikes
+    assert np.asarray(res.model_posteriors_).shape == (2, 1500)
+
+    # do_reject=False leaves the mask unset (multimodel no-rejection anchor).
+    res_no = Amica(AmicaConfig(**common), random_state=0).fit(data)
+    assert res_no.sample_mask_ is None and res_no.n_rejected_ == 0
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-q", "-s"]))

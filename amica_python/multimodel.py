@@ -190,6 +190,7 @@ def compute_chunk_stats_mm(
     rho_all: jnp.ndarray,
     gm: jnp.ndarray,
     log_det_sphere: float,
+    sample_weight: jnp.ndarray | None = None,
 ) -> MMChunkStats:
     """Multimodel E-step sufficient statistics for one time-chunk.
 
@@ -204,14 +205,25 @@ def compute_chunk_stats_mm(
     _P, LL_t, v, y_all = _model_posteriors_from_data(
         data_white_chunk, W_all, c_all, alpha_all, mu_all, beta_all, rho_all, gm, log_det_sphere
     )
-    ll_sum = jnp.sum(LL_t)
-    Nv = jnp.sum(v, axis=1)  # (M,)
+    # Likelihood sample rejection (single global mask across models): fold the 0/1
+    # sample_weight into the model posteriors so rejected samples drop out of every
+    # per-model M-step sum AND the effective counts (Nv / n_chunk / ll_sum). None on
+    # the no-rejection path -> taken at trace time, so that graph is byte-identical.
+    if sample_weight is None:
+        vw = v
+        ll_sum = jnp.sum(LL_t)
+        n_eff = jnp.asarray(n_chunk, dtype=dtype)
+    else:
+        vw = v * sample_weight[None, :]
+        ll_sum = jnp.sum(LL_t * sample_weight)
+        n_eff = jnp.sum(sample_weight).astype(dtype)
+    Nv = jnp.sum(vw, axis=1)  # (M,) — effective per-model good count
 
     # v-weighted center numerator and second moment (per model)
-    data_sum = jax.vmap(lambda vh: jnp.sum(data_white_chunk * vh[None, :], axis=1))(v)  # (M, n)
-    sigma2_partial = jax.vmap(lambda y, vh: jnp.sum(y * y * vh[None, :], axis=1))(y_all, v)  # (M, n)
+    data_sum = jax.vmap(lambda vh: jnp.sum(data_white_chunk * vh[None, :], axis=1))(vw)  # (M, n)
+    sigma2_partial = jax.vmap(lambda y, vh: jnp.sum(y * y * vh[None, :], axis=1))(y_all, vw)  # (M, n)
 
-    accum = jax.vmap(_model_accumulate)(y_all, v, alpha_all, mu_all, beta_all, rho_all)
+    accum = jax.vmap(_model_accumulate)(y_all, vw, alpha_all, mu_all, beta_all, rho_all)
     (gy, resp_sum, mu_numer, mu_denom_le2, mu_denom_gt2,
      beta_denom_le2, beta_denom_gt2, rho_numer, kappa_numer, lambda_numer) = accum
 
@@ -230,7 +242,7 @@ def compute_chunk_stats_mm(
         kappa_numer=kappa_numer,
         lambda_numer=lambda_numer,
         ll_sum=ll_sum,
-        n_chunk=jnp.asarray(n_chunk, dtype=dtype),
+        n_chunk=n_eff,
     )
 
 

@@ -115,6 +115,31 @@ def test_fit_ica_sample_rejection(mne):
     assert (~mask)[spike_idx].mean() > 0.5  # most planted spikes flagged
 
 
+def test_fit_ica_multimodel_rejection(mne):
+    """fit_ica(num_models>1, do_reject) runs M>1 likelihood rejection through MNE:
+    one global mask is exposed on amica_result_ and the primary ICA still works."""
+    from amica_python import fit_ica
+
+    raw = _make_raw(mne, n_ch=6, n_samp=3000)
+    data = raw.get_data()
+    rng = np.random.RandomState(13)
+    spike_idx = rng.choice(raw.n_times, size=raw.n_times // 25, replace=False)
+    data[:, spike_idx] *= 40.0
+    raw_c = mne.io.RawArray(data, raw.info)
+
+    ica = fit_ica(
+        raw_c, n_components=4, max_iter=40,
+        fit_params={"num_models": 2, "do_reject": True, "rejstart": 8,
+                    "rejint": 5, "numrej": 2, "rejsig": 3.0, "do_newton": False},
+    )
+    mask = ica.amica_result_.sample_mask_
+    assert mask is not None and mask.shape == (raw.n_times,)
+    assert ica.amica_result_.n_rejected_ > 0
+    assert (~mask)[spike_idx].mean() > 0.5  # spikes flagged via the mixture-LL threshold
+    assert np.asarray(ica.amica_result_.unmixing_matrix_white_).shape == (2, 4, 4)
+    assert ica.get_sources(raw_c).get_data().shape[0] == 4  # primary model ICA works
+
+
 def test_apply_preserves_shape(mne):
     """ica.apply() preserves data shape; full-rank round-trip is machine-precise."""
     from amica_python import fit_ica
