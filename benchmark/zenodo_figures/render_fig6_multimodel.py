@@ -1,12 +1,13 @@
-"""Main Figure 6 — multi-model AMICA: excess in-sample likelihood gain over stationary nulls,
-while effective model count is confounded (EXPLORATORY).
+"""Main Figure 6 — multi-model AMICA: excess in-sample likelihood gain over stationary nulls
+across four real cohorts, while effective model count is confounded (EXPLORATORY).
 
-Multi-model AMICA produces substantially larger in-sample likelihood gains on real EEG than on
-phase-randomized stationary controls, but N_eff does not distinguish stationarity. Panels:
-  (b) real vs surrogate Delta-LL(H) = LL(H) - LL(1)   [in-sample, unpenalized]
-  (c) effective model count N_eff(H), real vs surrogate  [confounded]
-  (d) representative model-posterior heatmap p(h|t)
-Reads the committed H-sweep npz pulled from /scratch (ds004505 real + phase surrogate).
+Multi-model AMICA produces substantially larger in-sample likelihood gains on real EEG (task +
+rest, 19-64 channels) than on phase-randomized stationary controls, but N_eff does not
+distinguish stationarity. Panels:
+  (a) real Delta-LL(H) = LL(H) - LL(1) for four cohorts vs the phase-surrogate null band
+  (b) effective model count N_eff(H), real cohorts vs surrogate  [confounded]
+  (c) representative model-posterior heatmap p(h|t)
+Reads the committed H-sweep npz pulled from /scratch (multimodel_bench/*). In-sample, exploratory.
 """
 from __future__ import annotations
 
@@ -21,8 +22,14 @@ import numpy as np
 import style
 
 FIGDATA = Path("D:/amica-validation-workspace/figdata")
-REAL = FIGDATA / "mmbench_ds004505"
-SURR = FIGDATA / "mmbench_ds004505_surr"
+# (real_dir, surr_dir|None, label, colour)
+COHORTS = [
+    ("mmbench_ds004505",      "mmbench_ds004505_surr", "ds004505 task 64ch", "#0072B2"),
+    ("mmbench_ds004505_ch19", None,                    "ds004505 task 19ch", "#56B4E9"),
+    ("mmbench_ds004504",      "mmbench_ds004504_surr", "ds004504 rest 19ch", "#009E73"),
+    ("mmbench_ds004621",      None,                    "ds004621 rest 64ch", "#E69F00"),
+]
+GREY = "#9aa3ad"
 
 
 def load_sweep(d):
@@ -49,43 +56,56 @@ def dll_neff(rows):
     return np.array(Hs), np.array(dll, float), np.array(neff, float)
 
 
-def _band(ax, Hs, M, color, label, alpha_line=1.0):
-    med = np.nanmedian(M, axis=0)
-    lo = np.nanpercentile(M, 25, axis=0); hi = np.nanpercentile(M, 75, axis=0)
-    ax.fill_between(Hs, lo, hi, color=color, alpha=0.18, zorder=2)
-    ax.plot(Hs, med, color=color, lw=1.7, alpha=alpha_line, label=label, zorder=3)
-
-
 def main():
     style.set_paper_style()
-    real, surr = load_sweep(REAL), load_sweep(SURR)
-    Hs, dll_r, neff_r = dll_neff(real)
-    Hs_s, dll_s, neff_s = dll_neff(surr)
+    fig, axs = plt.subplots(1, 3, figsize=(8.4, 2.95))
 
-    fig, axs = plt.subplots(1, 3, figsize=(7.8, 2.9))
-    blue, grey = style.AMICA_BLUE, "#9aa3ad"
+    surr_dll, surr_neff, surr_Hs = [], [], None
+    ratios = []
+    for real_dir, surr_dir, label, col in COHORTS:
+        real = load_sweep(FIGDATA / real_dir)
+        if not real:
+            continue
+        Hs, dll_r, neff_r = dll_neff(real)
+        axs[0].plot(Hs, np.nanmedian(dll_r, axis=0), color=col, lw=1.7, label=label, zorder=3)
+        axs[1].plot(Hs, np.nanmedian(neff_r, axis=0), color=col, lw=1.7, label=label, zorder=3)
+        if surr_dir:
+            surr = load_sweep(FIGDATA / surr_dir)
+            if surr:
+                Hss, dll_s, neff_s = dll_neff(surr)
+                surr_Hs = Hss
+                surr_dll.append(np.nanmedian(dll_s, axis=0))
+                surr_neff.append(np.nanmedian(neff_s, axis=0))
+                r10 = np.nanmedian(dll_r[:, -1]); s10 = np.nanmedian(dll_s[:, -1])
+                ratios.append(r10 / max(s10, 1e-6))
 
-    # ---- b: Delta-LL(H) real vs surrogate ----
-    axs[0].plot(Hs, dll_r.T, color=blue, lw=0.3, alpha=0.18, zorder=1)
-    _band(axs[0], Hs, dll_r, blue, "real EEG")
-    _band(axs[0], Hs_s, dll_s, grey, "phase surrogate")
-    r10 = np.nanmedian(dll_r[:, -1]); s10 = np.nanmedian(dll_s[:, -1])
-    axs[0].annotate(f"real/surr $\\approx${r10/max(s10,1e-6):.0f}$\\times$ at $H{{=}}10$",
-                    (Hs[-1], r10), xytext=(-4, 2), textcoords="offset points", ha="right",
-                    fontsize=6.5, color="#555")
+    # ---- a: Delta-LL(H) cohorts vs surrogate null band ----
+    if surr_dll:
+        sd = np.array(surr_dll)
+        axs[0].fill_between(surr_Hs, np.nanmin(sd, axis=0), np.nanmax(sd, axis=0),
+                            color=GREY, alpha=0.5, zorder=2, label="phase surrogate")
+        axs[0].plot(surr_Hs, np.nanmedian(sd, axis=0), color=GREY, lw=1.2, zorder=2)
+    axs[0].axhline(0, color="#ccc", lw=0.6, zorder=0)
+    if ratios:
+        axs[0].annotate(f"real/surr $\\approx${min(ratios):.0f}–{max(ratios):.0f}$\\times$ at $H{{=}}10$",
+                        (0.96, 0.05), xycoords="axes fraction", ha="right", va="bottom",
+                        fontsize=6.5, color="#555")
     axs[0].set_xlabel("model order $H$"); axs[0].set_ylabel("in-sample $\\Delta$LL (nats/sample)")
-    axs[0].set_title("b  Likelihood gain vs null", loc="left", fontweight="bold", fontsize=9.5)
-    axs[0].legend(fontsize=7, frameon=False, loc="upper left")
+    axs[0].set_title("a  Likelihood gain vs null", loc="left", fontweight="bold", fontsize=9.5)
+    axs[0].legend(fontsize=5.8, frameon=False, loc="upper left", handlelength=1.3, labelspacing=0.25)
 
-    # ---- c: N_eff(H) confound ----
-    _band(axs[1], Hs, neff_r, blue, "real EEG")
-    _band(axs[1], Hs_s, neff_s, grey, "phase surrogate")
-    axs[1].plot(Hs, Hs, color="#ccc", lw=0.7, ls=":", zorder=0)
+    # ---- b: N_eff(H) confound ----
+    if surr_neff:
+        sn = np.array(surr_neff)
+        axs[1].fill_between(surr_Hs, np.nanmin(sn, axis=0), np.nanmax(sn, axis=0),
+                            color=GREY, alpha=0.5, zorder=2, label="phase surrogate")
+    Hmax = max(surr_Hs) if surr_Hs is not None else 10
+    axs[1].plot([1, Hmax], [1, Hmax], color="#ccc", lw=0.7, ls=":", zorder=0)
     axs[1].set_xlabel("model order $H$"); axs[1].set_ylabel("$N_{\\mathrm{eff}}$")
-    axs[1].set_title("c  Effective model count (confounded)", loc="left", fontweight="bold", fontsize=9.2)
+    axs[1].set_title("b  $N_{\\mathrm{eff}}$ (confounded)", loc="left", fontweight="bold", fontsize=9.5)
 
-    # ---- d: representative posterior heatmap ----
-    pf = sorted(glob.glob(str(REAL / "*_M3.npz")))
+    # ---- c: representative posterior heatmap ----
+    pf = sorted(glob.glob(str(FIGDATA / "mmbench_ds004505" / "*_M3.npz")))
     if pf:
         z = np.load(pf[0], allow_pickle=True)
         P = np.asarray(z["model_posteriors_ds"], float)         # (H, T_ds)
@@ -94,15 +114,15 @@ def main():
         axs[2].set_yticks(range(P.shape[0])); axs[2].set_yticklabels([f"m{h+1}" for h in range(P.shape[0])])
         axs[2].set_xlabel("time (downsampled)"); axs[2].set_ylabel("model")
         fig.colorbar(im, ax=axs[2], fraction=0.046, pad=0.04, label="$p(h\\mid t)$")
-    axs[2].set_title("d  Posterior $p(h\\mid t)$, $H{=}3$ (illustrative)", loc="left",
-                     fontweight="bold", fontsize=8.2)
+    axs[2].set_title("c  Posterior $p(h\\mid t)$ ($H{=}3$)", loc="left",
+                     fontweight="bold", fontsize=9.0)
 
     fig.suptitle("Multi-model AMICA: real EEG shows excess in-sample likelihood gain over stationary "
                  "nulls (exploratory; $N_{\\mathrm{eff}}$ confounded)", fontsize=9.0, fontweight="bold", y=1.03)
     fig.tight_layout()
     out = style.save_vector(fig, Path(__file__).resolve().parent / "out" / "fig6_multimodel.pdf")
-    print(f"wrote {out}; real n={dll_r.shape[0]} surr n={dll_s.shape[0]}; "
-          f"dLL(H=10) real={r10:.4f} surr={s10:.4f}")
+    print(f"wrote {out}; cohorts={len([c for c in COHORTS])}; "
+          f"real/surr ratios={[f'{r:.0f}' for r in ratios]}")
 
 
 if __name__ == "__main__":
