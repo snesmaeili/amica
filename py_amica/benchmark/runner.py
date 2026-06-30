@@ -796,7 +796,7 @@ def compute_v3_artifacts(ica, raw):
             z = _zscore_rows(rows)[:, sample_idx]
             z = np.clip(z, -clip, clip)
             edges = np.linspace(-clip, clip, bins + 1)
-            mis = []
+            mi_values = []
             n_rows = z.shape[0]
             for i in range(n_rows - 1):
                 xi = z[i]
@@ -810,8 +810,8 @@ def compute_v3_artifacts(ica, raw):
                     py = pxy.sum(axis=0, keepdims=True)
                     denom = px * py
                     mask = (pxy > 0) & (denom > 0)
-                    mis.append(float(np.sum(pxy[mask] * np.log(pxy[mask] / denom[mask]))))
-            arr = np.asarray(mis, dtype=float)
+                    mi_values.append(float(np.sum(pxy[mask] * np.log(pxy[mask] / denom[mask]))))
+            arr = np.asarray(mi_values, dtype=float)
             return float(np.nanmean(arr)) if arr.size else float("nan"), int(arr.size)
 
         max_samples = min(20_000, sources.shape[1])

@@ -251,9 +251,11 @@ def classify_trial_type(
     from sklearn.model_selection import StratifiedShuffleSplit
 
     sss = StratifiedShuffleSplit(n_splits=1, test_size=0.3, random_state=random_state)
-    tr, te = next(sss.split(X, y_idx))
-    clf = GaussianNB().fit(X[tr], y_idx[tr])
-    cm = confusion_matrix(y_idx[te], clf.predict(X[te]), labels=list(range(len(classes))))
+    train_idx, test_idx = next(sss.split(X, y_idx))
+    clf = GaussianNB().fit(X[train_idx], y_idx[train_idx])
+    cm = confusion_matrix(
+        y_idx[test_idx], clf.predict(X[test_idx]), labels=list(range(len(classes)))
+    )
 
     z_trial = X.argmax(axis=1)  # dominant model per trial
     mi = mi_argmax_vs_label(z_trial, y_idx)

@@ -110,7 +110,8 @@ def inverse_transform_check(raw, ica) -> dict:
     data_orig = raw_orig.get_data()
     data_apply = raw_apply.get_data()
     diff = data_orig - data_apply
-    rel = np.linalg.norm(diff) / max(np.linalg.norm(data_orig), 1e-30)
+    denom = max(float(np.linalg.norm(data_orig)), 1e-30)
+    rel = float(np.linalg.norm(diff)) / denom
     return {
         "raw_n_channels": int(data_orig.shape[0]),
         "raw_n_samples": int(data_orig.shape[1]),

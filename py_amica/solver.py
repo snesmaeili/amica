@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable
 from collections import namedtuple
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -1191,7 +1191,7 @@ def _choose_chunk_size(
     n_samples: int,
     n_components: int,
     n_mix_comps: int,
-    dtype: np.dtype[Any] = np.dtype(np.float64),
+    dtype: np.dtype[Any] | None = None,
     memory_fraction: float = 0.25,
     device: str | None = None,
 ) -> int:
@@ -1212,7 +1212,7 @@ def _choose_chunk_size(
     The budget is capped at 4 GiB of hot buffers either way. Returns n_samples
     when everything fits (caller treats as full-batch).
     """
-    dtype_size = np.dtype(dtype).itemsize
+    dtype_size = np.dtype(np.float64 if dtype is None else dtype).itemsize
     bytes_per_sample = int(
         (1 + 2 * n_components + 5 * n_components * n_mix_comps) * dtype_size * 1.2
     )
