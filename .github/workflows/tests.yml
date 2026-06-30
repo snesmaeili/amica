@@ -42,9 +42,9 @@ jobs:
       - name: Install dependencies
         run: |
           if [ "${{ matrix.backend }}" == "jax-cpu" ]; then
-            uv pip install -e ".[mne,jax]" --group test --system
+            uv pip install -e ".[mne,jax,test]" --system
           else
-            uv pip install -e ".[mne]" --group test --system
+            uv pip install -e ".[mne,test]" --system
           fi
 
       - name: Run tests

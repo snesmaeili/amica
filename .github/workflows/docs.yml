@@ -49,7 +49,7 @@ jobs:
 
       - name: Build Sphinx docs
         run: |
-          sphinx-build -b html -W --keep-going docs/source docs/build/html
+          sphinx-build -b html -W --keep-going docs docs/build/html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
