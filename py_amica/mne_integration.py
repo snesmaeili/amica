@@ -12,6 +12,7 @@ Usage
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 import numpy as np
@@ -39,11 +40,10 @@ def _extract_data(inst, picks):
 
     if isinstance(inst, BaseRaw):
         return inst.get_data(picks)
-    elif isinstance(inst, BaseEpochs):
+    if isinstance(inst, BaseEpochs):
         # Concatenate all epochs along time axis
         return np.concatenate(inst.get_data()[:, picks, :], axis=-1)
-    else:
-        raise TypeError(f"inst must be Raw or Epochs, got {type(inst)}")
+    raise TypeError(f"inst must be Raw or Epochs, got {type(inst)}")
 
 
 def _compute_pre_whitener(data, info, picks):
@@ -114,7 +114,7 @@ def _compute_pca(data, n_components):
     data_centered = data - pca_mean
 
     # Compute full SVD. For PCA we need U, S, Vh
-    U, S, Vh = scipy.linalg.svd(data_centered, full_matrices=False)
+    _U, S, Vh = scipy.linalg.svd(data_centered, full_matrices=False)
 
     pca_components = Vh  # (n_features, n_features)
     pca_explained_variance = (S**2) / (n_samples - 1)
@@ -187,9 +187,8 @@ def fit_ica(
       ``num_models`` = 1 and > 1; multi-model uses one global mask on the mixture LL).
       Enable it via ``fit_params``::
 
-          ica = fit_ica(raw, n_components=20,
-                        fit_params=dict(do_reject=True, rejsig=3.0))
-          mask = ica.amica_result_.sample_mask_   # bool, True = kept
+          ica = fit_ica(raw, n_components=20, fit_params=dict(do_reject=True, rejsig=3.0))
+          mask = ica.amica_result_.sample_mask_  # bool, True = kept
           n_dropped = ica.amica_result_.n_rejected_
 
       ``sample_mask_`` indexes the samples passed to the fit (after any ``decim`` /
@@ -258,10 +257,7 @@ def fit_ica(
     n_channels, n_samples = raw_data.shape
 
     # Resolve n_components
-    if n_components is None:
-        n_comp = n_channels
-    else:
-        n_comp = min(n_components, n_channels)
+    n_comp = n_channels if n_components is None else min(n_components, n_channels)
 
     # Decimation
     if decim is not None and decim > 1:
@@ -289,12 +285,12 @@ def fit_ica(
     data_for_amica = pca_data / comp_stds
 
     # Step 4: Run AMICA
-    cfg_kwargs = dict(
-        max_iter=max_iter,
-        num_mix_comps=num_mix,
-        do_sphere=False,
-        do_mean=False,
-    )
+    cfg_kwargs = {
+        "max_iter": max_iter,
+        "num_mix_comps": num_mix,
+        "do_sphere": False,
+        "do_mean": False,
+    }
     if fit_params:
         cfg_kwargs.update(fit_params)
     config = AmicaConfig(**cfg_kwargs)  # type: ignore[arg-type]
@@ -348,16 +344,14 @@ def fit_ica(
     ica.n_samples_ = n_samples
     ica.current_fit = "raw" if isinstance(inst, _BaseRaw) else "epochs"
     ica.method = "amica"
-    ica.labels_ = dict()
+    ica.labels_ = {}
     ica.exclude = []
     ica.reject_ = reject
     ica.drop_inds_ = np.array([], dtype=int)
 
     # Internal naming
-    try:
+    with contextlib.suppress(Exception):
         ica._ica_names = [f"ICA{ii:03d}" for ii in range(n_comp)]
-    except Exception:
-        pass
 
     # Attach full AMICA result for viz module
     ica.amica_result_ = result
@@ -407,6 +401,6 @@ def get_model_ica(ica, model):
     out.unmixing_matrix_ = W_corrected
     out.mixing_matrix_ = np.linalg.pinv(W_corrected)
     out.exclude = []
-    out.labels_ = dict()
+    out.labels_ = {}
     out._amica_model_index = int(model)
     return out

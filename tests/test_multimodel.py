@@ -395,7 +395,7 @@ def test_multimodel_rejection():
     spikes = [100, 500, 900]
     data[:, spikes] *= 60.0
 
-    common = dict(num_models=2, max_iter=40, do_newton=False)
+    common = {"num_models": 2, "max_iter": 40, "do_newton": False}
     res = Amica(
         AmicaConfig(**common, do_reject=True, rejstart=5, rejint=5, numrej=2, rejsig=3.0),
         random_state=0,

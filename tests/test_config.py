@@ -30,9 +30,9 @@ def test_validations():
         AmicaConfig(lrate=0.0)
     with pytest.raises(ValueError, match="lrate must be > 0"):
         AmicaConfig(lrate=-0.1)
-    with pytest.raises(ValueError, match="minrho must be >= 1.0"):
+    with pytest.raises(ValueError, match=r"minrho must be >= 1.0"):
         AmicaConfig(minrho=0.9)
-    with pytest.raises(ValueError, match="maxrho must be <= 2.0"):
+    with pytest.raises(ValueError, match=r"maxrho must be <= 2.0"):
         AmicaConfig(maxrho=2.1)
     with pytest.raises(ValueError, match="minrho must be <= maxrho"):
         AmicaConfig(minrho=1.5, maxrho=1.2)
@@ -51,3 +51,12 @@ def test_outdir_path_conversion():
     config = AmicaConfig(outdir="/tmp/amica")
     assert isinstance(config.outdir, Path)
     assert config.outdir.as_posix() == "/tmp/amica"
+
+
+def test_invalid_estep():
+    import pytest
+
+    from py_amica import AmicaConfig
+
+    with pytest.raises(ValueError, match="estep must be 'auto', 'fused', or 'classic'"):
+        AmicaConfig(estep="invalid")

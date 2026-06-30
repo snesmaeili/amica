@@ -1,0 +1,64 @@
+name: Feature Request
+description: Suggest a new feature, enhancement, or improvement for PyAMICA.
+title: "[FEATURE] "
+labels:
+  - enhancement
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve PyAMICA.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Briefly describe the proposed feature.
+      placeholder: What would you like PyAMICA to support?
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What problem does this solve?
+      placeholder: Explain why this feature would be useful.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Related Area
+      options:
+        - AMICA model fitting
+        - Data preprocessing
+        - MNE integration
+        - File IO
+        - Plotting / visualization
+        - Documentation
+        - Testing
+        - Packaging / CI
+        - Other
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution
+      description: Describe how you think the feature should work.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternatives or workarounds you have considered.
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Papers, repositories, examples, or links that motivate this feature.

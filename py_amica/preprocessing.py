@@ -116,10 +116,7 @@ def compute_sphering_matrix(
     # Determine number of components to keep
     n_above_thresh = int(jnp.sum(eigenvalues > mineig))
 
-    if pcakeep is None:
-        n_keep = n_above_thresh
-    else:
-        n_keep = min(pcakeep, n_above_thresh)
+    n_keep = n_above_thresh if pcakeep is None else min(pcakeep, n_above_thresh)
 
     if n_keep < 1:
         raise ValueError(
@@ -256,7 +253,7 @@ def preprocess_data(
     """
 
     data = jnp.asarray(data, dtype=jnp.float64)
-    n_channels, n_samples = data.shape
+    n_channels, _n_samples = data.shape
 
     # Compute mean
     if init_mean is not None:
@@ -293,10 +290,7 @@ def preprocess_data(
         desphere = compute_dewhitening_matrix(sphere, eigenvalues, n_components)
         eigenvalues_kept = eigenvalues[:n_components]
     else:
-        if pcakeep is not None:
-            n_components = min(pcakeep, n_channels)
-        else:
-            n_components = n_channels
+        n_components = min(pcakeep, n_channels) if pcakeep is not None else n_channels
         sphere = jnp.eye(n_components, n_channels, dtype=jnp.float64)
         desphere = jnp.eye(n_channels, n_components, dtype=jnp.float64)
         eigenvalues_kept = jnp.ones(n_components, dtype=jnp.float64)

@@ -204,9 +204,12 @@ class AmicaConfig:
             raise ValueError("max_decs must be >= 0")
         if self.max_incs < 0:
             raise ValueError("max_incs must be >= 0")
-        if self.chunk_size is not None and self.chunk_size != "auto":
-            if not isinstance(self.chunk_size, int) or self.chunk_size < 1:
-                raise ValueError("chunk_size must be an int >= 1, 'auto', or None")
+        if (
+            self.chunk_size is not None
+            and self.chunk_size != "auto"
+            and (not isinstance(self.chunk_size, int) or self.chunk_size < 1)
+        ):
+            raise ValueError("chunk_size must be an int >= 1, 'auto', or None")
         if self.estep not in ("auto", "fused", "classic"):
             raise ValueError("estep must be 'auto', 'fused', or 'classic'")
         if self.outdir is not None:

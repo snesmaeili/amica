@@ -6,7 +6,7 @@ from .backend import HAS_JAX, jax, jnp
 
 if HAS_JAX:
     from jax.scipy.special import gammaln
-else:
+else:  # pragma: no cover
     from scipy.special import gammaln as scipy_gammaln
 
     gammaln = scipy_gammaln
@@ -85,9 +85,9 @@ def log_generalized_gaussian_mixture(
 ) -> jnp.ndarray:
     """Compute log PDF of a mixture of generalized Gaussians.
 
-    p(y) = Σ_j α_j * p_j(y)
+    p(y) = Σ_j alpha_j * p_j(y)
 
-    where p_j is a generalized Gaussian with parameters (μ_j, β_j, ρ_j).
+    where p_j is a generalized Gaussian with parameters (μ_j, β_j, rho_j).
 
     Parameters
     ----------
@@ -130,7 +130,7 @@ def compute_responsibilities(
 ) -> jnp.ndarray:
     """Compute posterior responsibilities of mixture components.
 
-    u_j(y) = α_j * p_j(y) / Σ_k α_k * p_k(y)
+    u_j(y) = alpha_j * p_j(y) / Σ_k alpha_k * p_k(y)
 
     Parameters
     ----------
@@ -150,7 +150,7 @@ def compute_responsibilities(
     responsibilities : jnp.ndarray, shape (n_mix, n_samples)
         Posterior responsibility of each mixture for each sample.
     """
-    # Compute log(α_j * p_j(y)) for each mixture
+    # Compute log(alpha_j * p_j(y)) for each mixture
     log_weighted_pdfs = jax.vmap(
         lambda a, m, b, r: jnp.log(a) + log_generalized_gaussian(y, m, b, r)
     )(alpha, mu, beta, rho)

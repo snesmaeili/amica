@@ -6,7 +6,7 @@ from .backend import HAS_JAX, jax, jnp
 
 if HAS_JAX:
     from jax.scipy.special import digamma
-else:
+else:  # pragma: no cover
     from scipy.special import digamma as scipy_digamma
 
     digamma = scipy_digamma
@@ -106,9 +106,9 @@ def compute_newton_terms(
 def update_alpha(
     responsibilities: jnp.ndarray,
 ) -> jnp.ndarray:
-    """Update mixture weights α.
+    """Update mixture weights alpha.
 
-    α_j = mean(u_j) across samples
+    alpha_j = mean(u_j) across samples
 
     Parameters
     ----------
@@ -299,7 +299,7 @@ def update_rho_gradient(
     minrho: float,
     maxrho: float,
 ) -> jnp.ndarray:
-    """Update shape parameters ρ using gradient descent.
+    """Update shape parameters rho using gradient descent.
 
     rho(j,k) = rho(j,k) + rholrate * ( 1.0 -
          (rho(j,k) / psifun(1.0+1.0/rho(j,k))) * drho_numer(j,k) / drho_denom(j,k) )

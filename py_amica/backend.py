@@ -102,10 +102,7 @@ if not HAS_JAX:
             in_axes = kwargs.get("in_axes", 0)
 
             def vmapped(*arrays):
-                if isinstance(in_axes, int):
-                    axes = (in_axes,) * len(arrays)
-                else:
-                    axes = in_axes
+                axes = (in_axes,) * len(arrays) if isinstance(in_axes, int) else in_axes
 
                 # Find length of mapped axis
                 n = 0
@@ -181,13 +178,12 @@ if not HAS_JAX:
                 """
                 if pred:
                     return true_fun(*operands)
-                else:
-                    return false_fun(*operands)
+                return false_fun(*operands)
 
     jax = _JaxStub()
 
 # Export
-__all__ = ["jax", "jnp", "HAS_JAX"]
+__all__ = ["HAS_JAX", "jax", "jnp"]
 
 
 def get_array_module():

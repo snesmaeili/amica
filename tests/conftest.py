@@ -75,7 +75,7 @@ def rng():
 
 @pytest.fixture(scope="session")
 def tiny_data(rng):
-    """4 channels × 200 samples — fast smoke-test data."""
+    """4 channels x 200 samples — fast smoke-test data."""
     return rng.randn(4, 200).astype(np.float64)
 
 

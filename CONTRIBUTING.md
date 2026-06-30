@@ -1,119 +1,214 @@
-# Contributing to pyamica
+# Contributing to PyAMICA
 
-Thank you for your interest in contributing to pyamica! This document provides guidelines for contributing to this project.
+Thank you for your interest in contributing to **PyAMICA**!
 
-## Getting Started
+We welcome contributions of all kinds, including bug fixes, new features, documentation improvements, tests, benchmarks, and examples.
 
-1. Fork the repository on GitHub
-1. Clone your fork locally:
-   ```bash
-   git clone https://github.com/<your-username>/pyamica.git
-   cd pyamica
-   ```
-1. Create a virtual environment and install in development mode:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-   pip install -e ".[dev,mne,jax]"
-   pre-commit install
-   ```
-1. Create a feature branch:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
+______________________________________________________________________
 
-## Development Workflow
+# Getting Started
+
+## 1. Fork and Clone
 
 ```bash
-python -m pytest tests/ -v
+git clone https://github.com/<your-username>/PyAMICA.git
+cd PyAMICA
 ```
 
-### Backend coverage
+## 2. Create a Virtual Environment
 
-CI runs **NumPy** (all Python versions) and **JAX-CPU** (Python 3.12 only).
-JAX-GPU tests must be run locally before merging anything that touches the
-solver or accumulator:
+Using `venv`:
 
 ```bash
-# JAX-CPU (requires jax installed: pip install -e ".[jax]")
-pytest tests/ --backend=cpu -v
-
-# JAX-GPU (requires CUDA + jax[cuda12])
-pytest tests/ --backend=gpu -v
-
-# Full suite with slow tests
-pytest tests/ --backend=gpu --run-slow -v
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 ```
 
-GPU tests (`--backend=gpu`) are the authoritative correctness check for the
-JAX path. The CI NumPy run catches regressions in the shared algorithmic core
-but will not catch JAX-specific failures.
+or using `uv`:
 
-### Using Nox
-
-We use `nox` to manage development environments and automate tasks. You can run:
-
-- `nox -s tests`: Run tests across all supported Python versions.
-- `nox -s lint`: Run the linters.
-- `nox -s docs`: Build the documentation.
-
-Install nox via `pip install nox`.
-
-### Code Style and Linting
-
-- We use `ruff` for code formatting and linting. This is enforced via `pre-commit`.
-- Run `pre-commit run --all-files` locally before committing to ensure your code complies.
-- Follow PEP 8 conventions where applicable.
-- Use type hints for function signatures.
-- Add docstrings in NumPy format for all public functions and classes.
-
-### Commit Messages
-
-- Use clear, descriptive commit messages
-- Start with a verb in imperative mood (e.g., "Add", "Fix", "Update")
-- Reference issue numbers where applicable (e.g., "Fix #42")
-
-## Types of Contributions
-
-### Bug Reports
-
-Please open an issue on GitHub using the **Bug report template**. Be sure to include:
-
-- A minimal reproducible example
-- Expected vs. actual behavior
-- Your environment (Python version, OS, JAX version if applicable)
-
-### Feature Requests
-
-Please open an issue on GitHub using the **Feature request template**, describing:
-
-- The use case / motivation
-- Proposed API or behavior
-- Any relevant references (papers, other implementations)
-
-### Code Contributions
-
-1. Ensure your changes pass all existing tests
-1. Add tests for new functionality
-1. Run `pre-commit` to ensure code style compliance
-1. Update docstrings and documentation as needed
-1. Submit a pull request against the `main` branch using the provided **Pull Request template**
-
-### Validation and Benchmarks
-
-We especially welcome contributions that:
-
-- Test AMICA against MATLAB reference outputs on new configurations
-- Benchmark on new EEG/MEG datasets
-- Compare with other ICA methods (Infomax, FastICA, Picard)
-
-## Code of Conduct
-
-This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
-
-## Questions?
-
-Open an issue or contact Sina Esmaeili at sina.esmaeili@umontreal.ca.
-
+```bash
+uv venv
+source .venv/bin/activate
 ```
+
+## 3. Install PyAMICA
+
+Using pip:
+
+```bash
+pip install -e ".[dev]"
 ```
+
+Using uv:
+
+```bash
+uv pip install -e ".[dev]"
+```
+
+## 4. Install Pre-commit Hooks
+
+```bash
+pre-commit install
+```
+
+This enables automatic formatting, linting, and repository consistency checks before every commit.
+
+______________________________________________________________________
+
+# Development Workflow
+
+Create a feature branch:
+
+```bash
+git checkout -b feature/my-new-feature
+```
+
+Make your changes and add or update tests where appropriate.
+
+Run the full pre-commit suite:
+
+```bash
+pre-commit run --all-files
+```
+
+Run the test suite:
+
+```bash
+pytest
+```
+
+______________________________________________________________________
+
+# Backend Testing
+
+PyAMICA supports multiple computational backends.
+
+## NumPy
+
+```bash
+pytest
+```
+
+## JAX (CPU)
+
+```bash
+pytest tests/ --backend=cpu
+```
+
+## JAX (GPU)
+
+Requires CUDA and the GPU dependencies.
+
+```bash
+pytest tests/ --backend=gpu
+```
+
+To include slow tests:
+
+```bash
+pytest tests/ --backend=gpu --run-slow
+```
+
+GPU tests are recommended whenever modifying the optimization algorithm or JAX backend.
+
+______________________________________________________________________
+
+# Documentation
+
+If your changes affect the documentation, ensure it builds successfully.
+
+```bash
+cd docs
+make html
+```
+
+______________________________________________________________________
+
+# Nox
+
+For maintainers and advanced contributors, Nox provides reproducible development sessions.
+
+```bash
+nox -s tests
+nox -s lint
+nox -s docs
+```
+
+______________________________________________________________________
+
+# Code Style
+
+PyAMICA uses:
+
+- **Ruff** for linting and formatting
+- **pre-commit** for automated quality checks
+- **NumPy-style docstrings** for public APIs
+
+Before opening a pull request, make sure:
+
+- all tests pass
+- pre-commit passes
+- documentation builds successfully (if affected)
+
+______________________________________________________________________
+
+# Pull Requests
+
+Please:
+
+- write clear commit messages
+- include tests for new functionality
+- update documentation when appropriate
+- reference related issues (for example `Fixes #42`)
+
+Pull requests should target the **main** branch.
+
+______________________________________________________________________
+
+# Bug Reports
+
+When reporting a bug, please include:
+
+- a minimal reproducible example
+- expected behavior
+- actual behavior
+- Python version
+- operating system
+- backend (NumPy/JAX CPU/JAX GPU)
+
+______________________________________________________________________
+
+# Feature Requests
+
+Feature requests are welcome.
+
+Please describe:
+
+- the motivation
+- the proposed API or behavior
+- relevant papers or references, if applicable
+
+______________________________________________________________________
+
+# Benchmarks and Validation
+
+Contributions that compare PyAMICA against other ICA implementations are especially valuable, including:
+
+- MATLAB AMICA
+- Picard
+- FastICA
+- Infomax
+
+Benchmarking on new EEG or MEG datasets is also encouraged.
+
+______________________________________________________________________
+
+# Code of Conduct
+
+By participating in this project, you agree to abide by our Code of Conduct.
+
+______________________________________________________________________
+
+# Questions
+
+If you have questions, feel free to open a GitHub issue or discussion.

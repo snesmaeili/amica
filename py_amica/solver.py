@@ -300,10 +300,7 @@ def _amica_step(
     )
 
     # 9. Update model center.
-    if do_mean:
-        c_new = jnp.mean(data_white, axis=1)
-    else:
-        c_new = c
+    c_new = jnp.mean(data_white, axis=1) if do_mean else c
 
     # 10. Scaling
     if doscaling:
@@ -521,10 +518,7 @@ def _amica_step_chunked(
     is_good = A_ok & jnp.all(jnp.isfinite(W_new))
 
     # --- M-step on PDF params using accumulated stats ---
-    if update_alpha:
-        alpha_new = apply_alpha_update_from_stats(totals.resp_sum, n_total)
-    else:
-        alpha_new = alpha
+    alpha_new = apply_alpha_update_from_stats(totals.resp_sum, n_total) if update_alpha else alpha
 
     if update_mu:
         mu_new = apply_mu_update_from_stats(
@@ -563,10 +557,7 @@ def _amica_step_chunked(
         rho_new = rho
 
     # --- c update ---
-    if do_mean:
-        c_new = data_sum_total / n_total
-    else:
-        c_new = c
+    c_new = data_sum_total / n_total if do_mean else c
 
     # --- Column scaling ---
     if doscaling:
@@ -658,7 +649,7 @@ def _amica_step_fused(
     the score, log-likelihood, Newton terms, and M-step sufficient statistics
     from that single pass — all inside ONE ``@jax.jit`` graph.
 
-    ``_amica_step`` recomputes the generalized-Gaussian log-pdf 3-4× per
+    ``_amica_step`` recomputes the generalized-Gaussian log-pdf 3-4x per
     iteration (compute_all_scores + compute_total_loglikelihood +
     compute_newton_terms + update_all_pdf_params). This version does it once.
     Numerically equivalent up to float64 rounding — the chunked path it reuses
@@ -978,7 +969,7 @@ class AmicaResult:
     The relationship is::
 
         sources = unmixing_matrix_white_ @ whitener_ @ (data - mean_)
-        data    = mixing_matrix_sensor_ @ sources + mean_
+        data = mixing_matrix_sensor_ @ sources + mean_
 
     Attributes
     ----------
@@ -1109,7 +1100,7 @@ class AmicaResult:
         # Build full orthonormal pca_components (n_ch, n_ch).
         # First n_comp rows = Q.T from QR. Complete to orthonormal basis
         # using SVD of Q to get its orthogonal complement.
-        U_full, _, Vt_full = np.linalg.svd(Q, full_matrices=True)
+        U_full, _, _Vt_full = np.linalg.svd(Q, full_matrices=True)
         # U_full: (n_ch, n_ch) orthonormal columns
         # First n_comp columns span same space as Q
         # Remaining columns span the null space
@@ -1153,7 +1144,7 @@ class AmicaResult:
 
 
 def _gpu_memory_budget_bytes(memory_fraction: float) -> float | None:
-    """Free VRAM (bytes) × memory_fraction on the active GPU, or None.
+    """Free VRAM (bytes) x memory_fraction on the active GPU, or None.
 
     Returns None when JAX is unavailable, no GPU device is present, or the
     backend does not expose memory_stats() (e.g. some ROCm / older jaxlib).
@@ -1197,8 +1188,8 @@ def _choose_chunk_size(
 ) -> int:
     """Return chunk_size that keeps hot-buffer allocation within available memory.
 
-    Hot buffers per chunk: y and g (n_comp × B each) plus per-mixture
-    intermediates (~5 × n_comp × n_mix × B). Formula mirrors scott-huberty's
+    Hot buffers per chunk: y and g (n_comp x B each) plus per-mixture
+    intermediates (~5 x n_comp x n_mix x B). Formula mirrors scott-huberty's
     choose_batch_size() adapted for our single-model NumPy/JAX buffers.
 
     Memory budget source:
@@ -1282,7 +1273,9 @@ class Amica:
     >>> config = AmicaConfig(max_iter=500, num_mix_comps=3)
     >>> amica = Amica(config, random_state=42)
     >>> result = amica.fit(data)  # data: (n_channels, n_samples)
-    >>> activations = result.unmixing_matrix_white_ @ result.whitener_ @ (data - result.mean_[:, None])
+    >>> activations = (
+    ...     result.unmixing_matrix_white_ @ result.whitener_ @ (data - result.mean_[:, None])
+    ... )
 
     Notes
     -----
@@ -2198,7 +2191,7 @@ def amica(
     Parameters
     ----------
     X : ndarray, shape (n_features, n_samples)
-        Pre-whitened data, features × samples.  This matches MNE's
+        Pre-whitened data, features x samples.  This matches MNE's
         ICA-method convention; MNE passes ``data[:, sel].T`` which gives
         (n_components, n_samples).
     n_components : int or None

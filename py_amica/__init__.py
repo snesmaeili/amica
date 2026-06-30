@@ -1,6 +1,6 @@
 """pyamica: Native Python AMICA for MNE-Python.
 
-Adaptive Mixture Independent Component Analysis (AMICA) with JAX
+Adaptive Mixture Independent Component Analysis (AMICA) [1]_ [2]_ with JAX
 acceleration. Designed as a native ICA method for MNE-Python
 (via ``mne.preprocessing.ICA``).
 
@@ -41,16 +41,16 @@ __all__ = [
     "amica",
     "fit_ica",
     "get_model_ica",
-    "rho_mean",
-    "rho_range",
     "mixture_entropy",
     "multimodality_flag",
-    "source_kurtosis",
-    "plot_convergence",
-    "plot_source_densities",
-    "plot_model_responsibilities",
-    "plot_mixture_weights",
-    "plot_shape_parameters",
-    "plot_parameter_summary",
     "plot_component_metrics",
+    "plot_convergence",
+    "plot_mixture_weights",
+    "plot_model_responsibilities",
+    "plot_parameter_summary",
+    "plot_shape_parameters",
+    "plot_source_densities",
+    "rho_mean",
+    "rho_range",
+    "source_kurtosis",
 ]

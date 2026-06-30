@@ -77,7 +77,7 @@ def test_compute_sphering_matrix_standard():
     np.testing.assert_allclose(sphere_np @ desphere, np.eye(4), atol=1e-8)
 
     # Test PCA type and reduction
-    sphere_pca, eigs_pca, n_comp_pca = compute_sphering_matrix(cov, sphere_type="pca", pcakeep=2)
+    sphere_pca, _eigs_pca, n_comp_pca = compute_sphering_matrix(cov, sphere_type="pca", pcakeep=2)
     assert n_comp_pca == 2
     assert np.asarray(sphere_pca).shape == (2, 4)
 
@@ -126,7 +126,7 @@ def test_preprocess_data_flags():
     data = rng.randn(4, 10_000)
 
     # Standard run
-    white, mean, sphere, desphere, n_comp, eigs = preprocess_data(data)
+    white, mean, _sphere, _desphere, _n_comp, eigs = preprocess_data(data)
     assert np.asarray(white).shape == (4, 10_000)
     assert np.asarray(mean).shape == (4,)
     assert np.all(np.asarray(eigs) > 0)
@@ -145,14 +145,14 @@ def test_preprocess_data_flags():
     forced_mean = np.ones(4)
     forced_sphere = np.eye(4) * 2.0
 
-    _, mean_over, sphere_over, _, n_comp_over, _ = preprocess_data(
+    _, mean_over, sphere_over, _, _n_comp_over, _ = preprocess_data(
         data_shifted, init_mean=forced_mean, init_sphere=forced_sphere
     )
     np.testing.assert_allclose(np.asarray(mean_over), forced_mean, atol=1e-10)
     np.testing.assert_allclose(np.asarray(sphere_over), forced_sphere, atol=1e-10)
 
     # No sphering
-    white_nos, _, sphere_nos, _, n_comp_nos, eigs_nos = preprocess_data(
+    _white_nos, _, sphere_nos, _, _n_comp_nos, eigs_nos = preprocess_data(
         data_shifted, do_sphere=False
     )
     np.testing.assert_allclose(np.asarray(sphere_nos), np.eye(4))

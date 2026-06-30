@@ -98,7 +98,7 @@ def test_plot_model_responsibilities(monkeypatch):
     rng = np.random.RandomState(42)
     data = rng.randn(4, 100)
     # With ax
-    fig2, ax = plt.subplots()
+    _fig2, ax = plt.subplots()
     fig = viz.plot_model_responsibilities(res2, data=data, ax=ax, show=True)
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
@@ -112,7 +112,7 @@ def test_plot_mixture_weights(monkeypatch):
     monkeypatch.setattr(plt, "show", lambda: None)
     res = MockAmicaResult()
     # With ax
-    fig2, ax = plt.subplots()
+    _fig2, ax = plt.subplots()
     fig = viz.plot_mixture_weights(res, ax=ax, show=True)
     assert isinstance(fig, plt.Figure)
     plt.close(fig)
@@ -126,7 +126,7 @@ def test_plot_shape_parameters(monkeypatch):
     monkeypatch.setattr(plt, "show", lambda: None)
     res = MockAmicaResult()
     # With ax
-    fig2, ax = plt.subplots()
+    _fig2, ax = plt.subplots()
     fig = viz.plot_shape_parameters(res, ax=ax, show=True)
     assert isinstance(fig, plt.Figure)
     plt.close(fig)

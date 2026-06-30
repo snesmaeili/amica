@@ -1,30 +1,76 @@
-## Description
+## Summary
 
-Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context.
+## Provide a brief summary of the changes introduced by this pull request.
 
-Fixes # (issue)
+## Motivation
 
-## Type of change
+Why is this change needed?
 
-Please delete options that are not relevant.
+- Fixes #
+- Related to #
 
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] This change requires a documentation update
+______________________________________________________________________
 
-## How Has This Been Tested?
+## Type of Change
 
-Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce.
+Please select all that apply.
 
-- [ ] Added new unit tests
-- [ ] Passed existing test suite (`pytest`)
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Documentation update
+- [ ] Performance improvement
+- [ ] Refactoring
+- [ ] Tests
+- [ ] Continuous Integration (CI)
+- [ ] Build / Packaging
+- [ ] Other
 
-## Checklist:
+______________________________________________________________________
 
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] Any dependent changes have been merged and published in downstream modules
+## Changes Made
+
+## Describe the main changes included in this pull request.
+
+-
+-
+
+______________________________________________________________________
+
+## Testing
+
+Describe how the changes were tested.
+
+```bash
+pytest
+```
+
+Additional tests (if applicable):
+
+# commands used
+
+⸻
+
+## Documentation
+
+- [ ] Documentation updated (if applicable)
+- [ ] Examples updated (if applicable)
+- [ ] Changelog updated (if applicable)
+- [ ] No documentation changes required
+
+⸻
+
+## Checklist
+
+- [ ] Code follows the project’s style guidelines
+- [ ] Pre-commit checks pass
+- [ ] Tests pass locally
+- [ ] Documentation builds successfully (if affected)
+- [ ] New functionality includes tests where appropriate
+- [ ] Public APIs are documented
+- [ ] Breaking changes have been documented
+
+⸻
+
+## Additional Notes
+
+Add any additional information, benchmarks, screenshots, references, or implementation details that reviewers should know.

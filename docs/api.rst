@@ -1,33 +1,42 @@
-:orphan:
-
 .. _api:
 
-=================
-API Documentation
-=================
+=============
+API Reference
+=============
 
-AMICA ICA Model
-===============
+This page documents the stable public API of :mod:`py_amica`.
 
-.. automodule:: py_amica
-   :no-members:
-   :no-inherited-members:
+Most users will interact with one of two interfaces:
+
+* :class:`py_amica.Amica` for fitting AMICA directly on NumPy arrays.
+* :func:`py_amica.fit_ica` for MNE-Python workflows.
+
+Core API
+========
 
 .. currentmodule:: py_amica
 
-Classes:
+Classes
+-------
 
 .. autosummary::
    :toctree: generated/
+   :nosignatures:
 
    Amica
    AmicaConfig
    AmicaResult
 
-Functions:
+Functions
+---------
 
 .. autosummary::
    :toctree: generated/
+   :nosignatures:
 
-   amica
    fit_ica
+
+Low-level Solver
+----------------
+
+.. autofunction:: py_amica.amica

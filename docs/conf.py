@@ -1,25 +1,45 @@
-# Configuration file for the Sphinx documentation builder.
-import os
+"""Sphinx configuration for the PyAMICA documentation."""
+
+from __future__ import annotations
+
 import sys
 from datetime import date
+from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as get_version
+from pathlib import Path
 
-# -- Path setup --------------------------------------------------------------
-sys.path.insert(0, os.path.abspath(".."))
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
 
-# -- Project information -----------------------------------------------------
-project = "pyamica"
-author = "pyamica developers"
-td = date.today()
-copyright = f"2024-{td.year}, {author}. Last updated on {td.isoformat()}"
+DOCS_SOURCE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = DOCS_SOURCE_DIR.parent
+
+sys.path.insert(0, str(REPO_ROOT))
 
 
-# The short X.Y version
-version = get_version("pyamica")
-# The full version, including alpha/beta/rc tags
+# ---------------------------------------------------------------------------
+# Project information
+# ---------------------------------------------------------------------------
+
+project = "PyAMICA"
+author = "PyAMICA developers"
+
+_today = date.today()
+copyright = f"2024-{_today.year}, {author}. Last updated on {_today.isoformat()}"
+
+try:
+    version = get_version("pyamica")
+except PackageNotFoundError:
+    version = "0.1.0"
+
 release = version
 
-# -- General configuration ---------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# General configuration
+# ---------------------------------------------------------------------------
+
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
@@ -27,22 +47,13 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinx.ext.viewcode",
+    "sphinx.ext.githubpages",
     "numpydoc",
     "myst_parser",
+    "sphinx_gallery.gen_gallery",
+    "sphinx_copybutton",
+    "sphinx_design",
 ]
-
-# configure numpydoc
-numpydoc_xref_param_type = True
-numpydoc_show_class_members = False
-numpydoc_attributes_as_param_list = True
-
-# generate autosummary even if no references
-autosummary_generate = True
-autodoc_default_options = {
-    "members": True,
-    "inherited-members": True,
-    "show-inheritance": True,
-}
 
 source_suffix = {
     ".rst": "restructuredtext",
@@ -50,32 +61,146 @@ source_suffix = {
 }
 
 master_doc = "index"
-
 templates_path = ["_templates"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-# -- Options for HTML output -------------------------------------------------
+exclude_patterns = [
+    "_build",
+    "build",
+    "Thumbs.db",
+    ".DS_Store",
+]
+
+nitpicky = False
+keep_warnings = True
+
+
+# ---------------------------------------------------------------------------
+# Autodoc / Autosummary / Numpydoc
+# ---------------------------------------------------------------------------
+
+autosummary_generate = True
+autodoc_typehints = "description"
+autodoc_member_order = "bysource"
+
+autodoc_default_options = {
+    "members": True,
+    "inherited-members": True,
+    "show-inheritance": True,
+    "undoc-members": False,
+}
+
+numpydoc_show_class_members = False
+numpydoc_xref_param_type = True
+numpydoc_attributes_as_param_list = True
+numpydoc_class_members_toctree = False
+
+
+# ---------------------------------------------------------------------------
+# MyST Markdown
+# ---------------------------------------------------------------------------
+
+myst_enable_extensions = [
+    "colon_fence",
+    "deflist",
+    "fieldlist",
+    "html_admonition",
+    "html_image",
+    "linkify",
+    "substitution",
+    "tasklist",
+]
+
+myst_heading_anchors = 3
+
+
+# ---------------------------------------------------------------------------
+# Intersphinx
+# ---------------------------------------------------------------------------
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy/", None),
+    "matplotlib": ("https://matplotlib.org/stable/", None),
+    "mne": ("https://mne.tools/stable/", None),
+    "sklearn": ("https://scikit-learn.org/stable/", None),
+}
+
+
+# ---------------------------------------------------------------------------
+# Copy button
+# ---------------------------------------------------------------------------
+
+copybutton_prompt_text = r">>> |\.\.\. |\$ "
+copybutton_prompt_is_regexp = True
+copybutton_only_copy_prompt_lines = False
+
+
+# ---------------------------------------------------------------------------
+# Sphinx Gallery
+# ---------------------------------------------------------------------------
+
+sphinx_gallery_conf = {
+    "doc_module": "py_amica",
+    "reference_url": {
+        "py_amica": None,
+    },
+    "examples_dirs": str(REPO_ROOT / "examples"),
+    "gallery_dirs": "auto_examples",
+    "backreferences_dir": "generated",
+    "filename_pattern": r"^plot_|^[0-9]+_",
+    "ignore_pattern": r"validation/.*|cluster/.*",
+    "run_stale_examples": False,
+    "remove_config_comments": True,
+    "within_subsection_order": "FileNameSortKey",
+}
+
+
+# ---------------------------------------------------------------------------
+# HTML output
+# ---------------------------------------------------------------------------
+
 html_theme = "pydata_sphinx_theme"
+html_title = "PyAMICA"
+html_short_title = "PyAMICA"
+html_show_sphinx = False
+html_show_copyright = True
+
 html_static_path = ["_static"]
 
 html_theme_options = {
-    "icon_links": [
-        dict(
-            name="GitHub",
-            url="https://github.com/snesmaeili/pyamica",
-            icon="fab fa-github-square",
-        ),
-    ],
-    "use_edit_page_button": False,
+    "github_url": "https://github.com/snesmaeili/PyAMICA",
+    "use_edit_page_button": True,
     "navigation_with_keys": False,
-    "show_toc_level": 1,
+    "show_toc_level": 2,
+    "navigation_depth": 3,
+    "navbar_align": "left",
+    "navbar_start": ["navbar-logo"],
+    "navbar_center": ["navbar-nav"],
+    "navbar_end": ["theme-switcher", "navbar-icon-links"],
+    "header_links_before_dropdown": 6,
+    "show_prev_next": False,
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/snesmaeili/PyAMICA",
+            "icon": "fa-brands fa-github",
+        },
+        {
+            "name": "PyPI",
+            "url": "https://pypi.org/project/pyamica/",
+            "icon": "fa-brands fa-python",
+        },
+    ],
 }
 
-# Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", None),
-    "mne": ("https://mne.tools/dev", None),
-    "numpy": ("https://numpy.org/devdocs", None),
-    "scipy": ("https://scipy.github.io/devdocs", None),
-    "matplotlib": ("https://matplotlib.org", None),
+html_context = {
+    "github_user": "snesmaeili",
+    "github_repo": "PyAMICA",
+    "github_version": "main",
+    "doc_path": "docs",
 }
+
+# Optional: enable once files exist.
+# html_logo = "_static/logo.png"
+# html_favicon = "_static/favicon.ico"

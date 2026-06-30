@@ -78,7 +78,6 @@ Icon
 ._*
 
 # Project specific
-validation/
 results/
 scripts/cc_benchmark/results/
 .matlab_engine_src/
@@ -89,3 +88,4 @@ tmpdata*.fdt
 slurm-*.out
 slurm-*.err
 *.f90
+codeql-db

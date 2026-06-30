@@ -2,36 +2,78 @@ name: Docs
 
 on:
   push:
-    branches: [main, production-ready-amica]
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "py_amica/**"
+      - "examples/**"
+      - "README.md"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
   pull_request:
-    branches: [main, production-ready-amica]
+    paths:
+      - "docs/**"
+      - "py_amica/**"
+      - "examples/**"
+      - "README.md"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   build:
+    name: Build docs
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          cache: pip
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - name: Install package and docs dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[docs]"
+
+      - name: Build Sphinx docs
+        run: |
+          sphinx-build -b html -W --keep-going docs/source docs/build/html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
         with:
-          enable-cache: true
+          path: docs/build/html
 
-      - name: Install dependencies
-        run: |
-          uv pip install -e ".[all]" --group docs --system
+  deploy:
+    name: Deploy docs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
 
-      - name: Build docs
-        run: |
-          cd docs
-          make html
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

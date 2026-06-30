@@ -1,89 +1,184 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyamica"
-version = "0.1.0"
-description = "Native Python AMICA (Adaptive Mixture ICA) for MNE-Python"
-readme = "README.md"
-license = {text = "BSD-3-Clause"}
+version = "0.0.1"
+description = "Native Python implementation of AMICA for MNE-Python and scientific EEG workflows."
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { text = "BSD-3-Clause" }
 requires-python = ">=3.10"
 authors = [
-    {name = "Sina Esmaeili", email = "sina.esmaeili@umontreal.ca"},
+  { name = "Sina Esmaeili", email = "sina.esmaeili@umontreal.ca" },
+]
+keywords = [
+  "amica",
+  "ica",
+  "eeg",
+  "mne",
+  "neuroscience",
+  "blind-source-separation",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: BSD License",
-    "Programming Language :: Python :: 3",
-    "Topic :: Scientific/Engineering",
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: BSD License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Information Analysis",
 ]
+
 dependencies = [
-    "numpy>=1.21",
-    "scipy>=1.7",
+  "numpy>=1.21",
+  "scipy>=1.7",
 ]
 
 [project.optional-dependencies]
-jax = ["jax>=0.4"]
-gpu = ["jax[cuda12]>=0.4"]
-mne = ["mne>=1.0"]
-icalabel = ["mne-icalabel>=0.4"]
-viz = ["matplotlib>=3.5"]
-benchmark = [
-    "pyamica[mne,icalabel,viz]",
-    "pandas>=2.0",
-    "scipy>=1.7",
-    "scikit-learn>=1.0",
-    "python-picard>=0.7",
-    "tabulate>=0.9",
-    "onnxruntime>=1.15",
+jax = [
+  "jax>=0.4",
 ]
-test = [
-    "pytest>=7.0",
-    "pytest-cov",
-    "pytest-xdist",
-    "pytest-timeout",
-    "pandas>=2.0",
-    "scikit-learn>=1.0",
-]
-dev = ["pyamica[test]", "sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme", "myst-parser", "pre-commit>=3.0", "ruff>=0.9", "towncrier>=23.0", "nox"]
-all = ["jax>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "pyamica[benchmark]"]
 
-[dependency-groups]
+gpu = [
+  "jax[cuda12]>=0.4",
+]
+
+mne = [
+  "mne>=1.0",
+]
+
+icalabel = [
+  "mne-icalabel>=0.4",
+]
+
+viz = [
+  "matplotlib>=3.5",
+]
+
 test = [
-    "pytest>=7.0",
-    "pytest-cov",
-    "pytest-xdist",
-    "pytest-timeout",
-    "pandas>=2.0",
-    "scikit-learn>=1.0",
+  "pytest>=8.0",
+  "pytest-cov",
+  "pytest-xdist",
+  "pytest-timeout",
+  "pandas>=2.0",
+  "scikit-learn>=1.0",
 ]
+
 docs = [
-    "sphinx>=5.0",
-    "numpydoc",
-    "sphinx-gallery",
-    "pydata-sphinx-theme",
-    "myst-parser",
+  "sphinx>=7.0",
+  "numpydoc",
+  "sphinx-gallery",
+  "pydata-sphinx-theme",
+  "myst-parser",
+  "sphinx-copybutton",
+  "sphinx-design",
+  "towncrier",
+  "linkify-it-py",
 ]
-lint = [
-    "pre-commit>=3.0",
-    "ruff>=0.9",
-]
+
 dev = [
-    {include-group = "test"},
-    {include-group = "docs"},
-    {include-group = "lint"},
-    "towncrier>=23.0",
-    "nox",
+  "pyamica[test,docs]",
+  "pre-commit>=3.0",
+  "ruff>=0.9",
+  "towncrier>=23.0",
+  "nox",
+  "build",
+  "twine",
+]
+
+release = [
+  "build",
+  "twine",
+  "towncrier>=23.0",
+]
+
+all = [
+  "pyamica[jax,mne,icalabel,viz,test,docs]",
+]
+
+[project.urls]
+Homepage = "https://github.com/BabaSanfour/PyAMICA"
+Documentation = "https://babasanfour.github.io/PyAMICA/"
+Repository = "https://github.com/BabaSanfour/PyAMICA.git"
+Issues = "https://github.com/BabaSanfour/PyAMICA/issues"
+Changelog = "https://github.com/BabaSanfour/PyAMICA/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+include = ["py_amica*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "W",
+  "I",
+  "UP",
+  "B",
+  "C4",
+  "SIM",
+  "PIE",
+  "RET",
+  "RUF",
+]
+ignore = [
+  "RET504",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["py_amica"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"docs/**" = ["E402", "F401"]
+"examples/**" = ["E402"]
+"tests/**" = ["S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+log_level = "INFO"
+addopts = "-ra"
+markers = [
+  "gpu: requires --backend=gpu and a reachable JAX GPU device",
+  "slow: long-running; pass --run-slow to include",
+  "timeout: per-test timeout in seconds (pytest-timeout)",
+]
+filterwarnings = [
+  "error",
+  "ignore:Unrecognized profile:UserWarning",
+  "ignore:Unknown section Matrix Naming Convention:UserWarning",
+  "ignore:Citation.*is not referenced:UserWarning",
+  "ignore:The rcond argument for linalg.pinv is deprecated:DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["py_amica"]
+omit = [
+  "py_amica/binary.py",
 ]
 
 [tool.towncrier]
 package = "py_amica"
 filename = "CHANGELOG.md"
 directory = "changes"
-title_format = "## [{version}](https://github.com/snesmaeili/pyamica/releases/tag/v{version}) ({project_date})"
-issue_format = "[#{issue}](https://github.com/snesmaeili/pyamica/pull/{issue})"
+title_format = "## [{version}](https://github.com/snesmaeili/PyAMICA/releases/tag/v{version}) ({project_date})"
+issue_format = "[#{issue}](https://github.com/snesmaeili/PyAMICA/pull/{issue})"
 template = "changes/template.md"
 
 [[tool.towncrier.type]]
@@ -107,50 +202,11 @@ name = "Dependencies"
 showcontent = true
 
 [[tool.towncrier.type]]
-directory = "authors"
-name = "Authors"
+directory = "doc"
+name = "Documentation"
 showcontent = true
 
-[project.urls]
-Homepage = "https://github.com/snesmaeili/pyamica"
-Repository = "https://github.com/snesmaeili/pyamica"
-
-[tool.setuptools.packages.find]
-include = ["py_amica*"]
-
-[tool.ruff]
-line-length = 100
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I"]
-extend-select = ["B", "UP"]
-ignore = ["E501"]
-
-[tool.ruff.lint.isort]
-known-first-party = ["py_amica"]
-
-[[tool.mypy.overrides]]
-module = ["py_amica.benchmark.*"]
-ignore_errors = true
-
-[tool.pytest]
-minversion = "9"
-testpaths = ["tests"]
-log_level = "INFO"
-strict = true
-addopts = ["-ra"]
-markers = [
-    "gpu: requires --backend=gpu and a reachable JAX GPU device",
-    "slow: long-running; pass --run-slow to include",
-    "timeout: per-test timeout in seconds (pytest-timeout)",
-]
-filterwarnings = [
-    "error",
-    "ignore:Unrecognized profile:UserWarning",
-    "ignore:Unknown section Matrix Naming Convention:UserWarning",
-    "ignore:Citation.*is not referenced:UserWarning",
-    "ignore:The rcond argument for linalg.pinv is deprecated:DeprecationWarning",
-]
-
-[tool.coverage.run]
-omit = ["py_amica/binary.py"]
+[[tool.towncrier.type]]
+directory = "misc"
+name = "Miscellaneous"
+showcontent = true

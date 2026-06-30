@@ -20,7 +20,7 @@ def compute_log_det_W(W: jnp.ndarray) -> float:
     log_det : float
         Log absolute determinant.
     """
-    q, r = jnp.linalg.qr(W)
+    _q, r = jnp.linalg.qr(W)
     diag = jnp.diag(r)
     return jnp.sum(jnp.log(jnp.abs(diag) + 1e-300))
 
@@ -203,7 +203,7 @@ def compute_multimodel_loglikelihood(
 ) -> float:
     """Compute log-likelihood with multiple ICA models.
 
-    log p(x) = log Σ_h γ_h * p((x, h))
+    log p(x) = log Σ_h gamma_h * p((x, h))
 
     Parameters
     ----------
@@ -242,7 +242,7 @@ def compute_multimodel_loglikelihood(
     # Vectorize over models (axis 0)
     model_logliks = jax.vmap(model_ll_fn)(W_all, y_all, alpha_all, mu_all, beta_all, rho_all)
 
-    # Compute log Σ_h γ_h * p((x, h)) using log-sum-exp
+    # Compute log Σ_h gamma_h * p((x, h)) using log-sum-exp
     log_weighted = model_logliks + jnp.log(gm)[:, None]
     total_ll = jax.scipy.special.logsumexp(log_weighted, axis=0)
 

@@ -56,13 +56,13 @@ def test_direct_vs_shim_sources_correlated(mne):
     from py_amica import fit_ica
 
     raw = _make_raw(mne, n_ch=6, n_samp=3000)
-    params = dict(
-        n_components=3,
-        max_iter=30,
-        num_mix=2,
-        random_state=42,
-        fit_params={"do_newton": False},
-    )
+    params = {
+        "n_components": 3,
+        "max_iter": 30,
+        "num_mix": 2,
+        "random_state": 42,
+        "fit_params": {"do_newton": False},
+    }
     ica_a = fit_ica(raw.copy(), **params)
     ica_b = fit_ica(raw.copy(), **params)
 

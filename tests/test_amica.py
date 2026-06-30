@@ -361,7 +361,13 @@ def test_chunked_matches_fullbatch_synthetic():
     A_true = A_true / np.linalg.norm(A_true, axis=0, keepdims=True)
     x = A_true @ srcs
 
-    cfg_kw = dict(num_models=1, num_mix_comps=3, max_iter=50, dtype="float64", pcakeep=n_src)
+    cfg_kw = {
+        "num_models": 1,
+        "num_mix_comps": 3,
+        "max_iter": 50,
+        "dtype": "float64",
+        "pcakeep": n_src,
+    }
     res_full = Amica(AmicaConfig(**cfg_kw, chunk_size=None), random_state=42).fit(x)
     res_chunk = Amica(AmicaConfig(**cfg_kw, chunk_size=1024), random_state=42).fit(x)
 
@@ -498,7 +504,7 @@ def test_chunk_size_auto_matches_fullbatch(tiny_data):
     """chunk_size='auto' on data that fits in RAM gives same W as full-batch."""
     from py_amica import Amica, AmicaConfig
 
-    kw = dict(max_iter=10, dtype="float64")
+    kw = {"max_iter": 10, "dtype": "float64"}
     res_full = Amica(AmicaConfig(**kw, chunk_size=None), random_state=42).fit(tiny_data)
     res_auto = Amica(AmicaConfig(**kw, chunk_size="auto"), random_state=42).fit(tiny_data)
     np.testing.assert_allclose(
@@ -731,15 +737,15 @@ def test_rejection_behavioral():
     data_contaminated = data.copy()
     data_contaminated[:, spike_idx] *= 50.0
 
-    shared_cfg = dict(
-        max_iter=60,
-        num_mix_comps=2,
-        do_newton=False,
-        rejstart=10,
-        rejint=5,
-        numrej=3,
-        rejsig=3.0,
-    )
+    shared_cfg = {
+        "max_iter": 60,
+        "num_mix_comps": 2,
+        "do_newton": False,
+        "rejstart": 10,
+        "rejint": 5,
+        "numrej": 3,
+        "rejsig": 3.0,
+    }
 
     solver_rej = Amica(AmicaConfig(**shared_cfg, do_reject=True), random_state=42)
     res_rej = solver_rej.fit(data_contaminated)
@@ -841,9 +847,15 @@ def test_rejection_chunked_matches_fused():
     data = rng.laplace(size=(5, 1200))
     spikes = [50, 600, 900]
     data[:, spikes] *= 60.0
-    common = dict(
-        max_iter=40, do_newton=False, do_reject=True, rejstart=8, rejint=6, numrej=2, rejsig=3.0
-    )
+    common = {
+        "max_iter": 40,
+        "do_newton": False,
+        "do_reject": True,
+        "rejstart": 8,
+        "rejint": 6,
+        "numrej": 2,
+        "rejsig": 3.0,
+    }
 
     res_full = Amica(AmicaConfig(**common, chunk_size=None), random_state=0).fit(data)
     res_chunk = Amica(AmicaConfig(**common, chunk_size=137), random_state=0).fit(data)
@@ -876,7 +888,7 @@ def test_amica_wrapper(tiny_data):
     assert Y.shape == X.shape
     assert n_iter == 2
 
-    K2, W2, Y2 = amica(X, max_iter=1, return_n_iter=False)
+    K2, W2, _Y2 = amica(X, max_iter=1, return_n_iter=False)
     assert K2 is None
     assert W2.shape == (4, 4)
 
@@ -962,13 +974,13 @@ def test_checkpoint_resume_bit_exact(tmp_path):
     A_true = rng.randn(n_ch, n_ch)
     data = (A_true @ S).astype(np.float64)
 
-    shared = dict(
-        num_mix_comps=2,
-        do_newton=False,
-        do_mean=False,
-        lratefact=1.0,
-        rholratefact=1.0,
-    )
+    shared = {
+        "num_mix_comps": 2,
+        "do_newton": False,
+        "do_mean": False,
+        "lratefact": 1.0,
+        "rholratefact": 1.0,
+    }
 
     # Run A: 100 iters straight through
     res_full = Amica(AmicaConfig(max_iter=100, **shared), random_state=42).fit(data)
@@ -995,7 +1007,7 @@ def test_checkpoint_resume_bit_exact(tmp_path):
     W_50_50 = res_resumed.unmixing_matrix_white_
 
     # JAX JIT may reorder FP ops between compilations → allow machine-eps slack.
-    # atol=1e-13 is ~50× tighter than 1e-12 (round-trip tests) and catches any
+    # atol=1e-13 is ~50x tighter than 1e-12 (round-trip tests) and catches any
     # algorithmic divergence (actual observed diff ≈ 6e-15).
     np.testing.assert_allclose(
         W_100,

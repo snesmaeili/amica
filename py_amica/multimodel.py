@@ -396,10 +396,7 @@ def m_step_mm(
         )
         rho_new = apply_rho_update_from_stats(rho_h, rn_h, rs_h, rholrate, minrho, maxrho)
 
-        if do_mean:
-            c_new = ds_h / safe_Nv
-        else:
-            c_new = c_h
+        c_new = ds_h / safe_Nv if do_mean else c_h
 
         if doscaling:
             col_norms = jnp.linalg.norm(A_new, axis=0)

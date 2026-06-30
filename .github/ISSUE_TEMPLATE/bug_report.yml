@@ -1,0 +1,99 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in PyAMICA.
+title: "[BUG] "
+labels:
+  - bug
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug in PyAMICA.
+
+        Please provide a minimal reproducible example whenever possible.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the bug.
+      placeholder: Describe what went wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal Reproducible Example
+      description: Provide the smallest code example or command that reproduces the issue.
+      placeholder: |
+        from py_amica import ...
+
+        # minimal example here
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      placeholder: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      placeholder: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: traceback
+    attributes:
+      label: Error Traceback
+      description: Paste the full traceback, if available.
+      render: shell
+
+  - type: input
+    id: pyamica_version
+    attributes:
+      label: PyAMICA Version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python Version
+      placeholder: "3.11"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      placeholder: "Ubuntu 24.04 / macOS / Windows"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: installation
+    attributes:
+      label: Installation Method
+      options:
+        - label: Installed from PyPI
+        - label: Installed from source
+        - label: Editable install (`pip install -e .`)
+        - label: Conda environment
+        - label: Virtual environment / venv
+        - label: Other
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Add any other context, logs, screenshots, or relevant details.

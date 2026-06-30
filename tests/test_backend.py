@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 import numpy as np
 
 from py_amica import backend
@@ -9,10 +11,8 @@ from py_amica import backend
 
 def test_has_jax_flag():
     """Verify HAS_JAX flag corresponds to whether JAX is importable."""
-    try:
+    with contextlib.suppress(Exception):
         import jax  # noqa: F401
-    except Exception:
-        pass
 
     # The flag should match the system (unless AMICA_NO_JAX was set before import)
     assert isinstance(backend.HAS_JAX, bool)
@@ -70,72 +70,70 @@ def test_jax_stub_jit():
     # We can access _JaxStub even if HAS_JAX is True, if we look in backend
     # but wait, if HAS_JAX is True, _JaxStub is not defined in the module namespace!
     # Let's import the file logic or execute it to get the stub.
-    pass
 
 
 def _get_stub():
     """Helper to get a _JaxStub instance for testing."""
     if hasattr(backend, "_JaxStub"):
         return backend._JaxStub()
-    else:
-        # If JAX is installed, _JaxStub was skipped. Let's dynamically execute it.
-        class _JaxStub:
+
+    # If JAX is installed, _JaxStub was skipped. Let's dynamically execute it.
+    class _JaxStub:
+        @staticmethod
+        def jit(func=None, **kwargs):
+            if func is None:
+
+                def wrapper(f):
+                    return f
+
+                return wrapper
+            return func
+
+        @staticmethod
+        def vmap(func, *args, **kwargs):
+            def vmapped(*arrays):
+                results = [func(*[a[i] for a in arrays]) for i in range(len(arrays[0]))]
+                if results and isinstance(results[0], tuple):
+                    n_outputs = len(results[0])
+                    return tuple(np.array([r[j] for r in results]) for j in range(n_outputs))
+                return np.array(results)
+
+            return vmapped
+
+        class random:
             @staticmethod
-            def jit(func=None, **kwargs):
-                if func is None:
-
-                    def wrapper(f):
-                        return f
-
-                    return wrapper
-                return func
+            def PRNGKey(seed: int):
+                return np.random.RandomState(seed)
 
             @staticmethod
-            def vmap(func, *args, **kwargs):
-                def vmapped(*arrays):
-                    results = [func(*[a[i] for a in arrays]) for i in range(len(arrays[0]))]
-                    if results and isinstance(results[0], tuple):
-                        n_outputs = len(results[0])
-                        return tuple(np.array([r[j] for r in results]) for j in range(n_outputs))
-                    return np.array(results)
+            def split(key, num: int = 2):
+                if hasattr(key, "randint"):
+                    seeds = [key.randint(0, 2**31) for _ in range(num)]
+                    return [np.random.RandomState(s) for s in seeds]
+                return [np.random.RandomState(i) for i in range(num)]
 
-                return vmapped
+            @staticmethod
+            def normal(key, shape):
+                if hasattr(key, "randn"):
+                    return key.randn(*shape)
+                return np.random.randn(*shape)
 
-            class random:
+        class scipy:
+            class special:
                 @staticmethod
-                def PRNGKey(seed: int):
-                    return np.random.RandomState(seed)
+                def logsumexp(a, axis=None):
+                    from scipy.special import logsumexp
 
-                @staticmethod
-                def split(key, num: int = 2):
-                    if hasattr(key, "randint"):
-                        seeds = [key.randint(0, 2**31) for _ in range(num)]
-                        return [np.random.RandomState(s) for s in seeds]
-                    return [np.random.RandomState(i) for i in range(num)]
+                    return logsumexp(a, axis=axis)
 
-                @staticmethod
-                def normal(key, shape):
-                    if hasattr(key, "randn"):
-                        return key.randn(*shape)
-                    return np.random.randn(*shape)
+        class lax:
+            @staticmethod
+            def cond(pred, true_fun, false_fun, *operands):
+                if pred:
+                    return true_fun(*operands)
+                return false_fun(*operands)
 
-            class scipy:
-                class special:
-                    @staticmethod
-                    def logsumexp(a, axis=None):
-                        from scipy.special import logsumexp
-
-                        return logsumexp(a, axis=axis)
-
-            class lax:
-                @staticmethod
-                def cond(pred, true_fun, false_fun, *operands):
-                    if pred:
-                        return true_fun(*operands)
-                    else:
-                        return false_fun(*operands)
-
-        return _JaxStub()
+    return _JaxStub()
 
 
 def test_stub_jit_wrapper():
