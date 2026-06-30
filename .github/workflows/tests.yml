@@ -48,6 +48,7 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
+        shell: bash
         run: |
           if [ "${{ matrix.backend }}" == "jax-cpu" ]; then
             uv pip install -e ".[mne,jax,test,viz,icalabel]" --system
@@ -56,6 +57,7 @@ jobs:
           fi
 
       - name: Run tests
+        shell: bash
         run: |
           if [ "${{ matrix.backend }}" == "jax-cpu" ]; then
             python -m pytest tests/ -v --tb=short --backend=cpu --cov=py_amica --cov-report=xml -n auto
