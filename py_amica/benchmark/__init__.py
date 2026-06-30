@@ -40,18 +40,8 @@ viz          Plotting suite (Delorme/Frank-style + per-subject diagnostics + hea
 
 from __future__ import annotations
 
-from . import (  # noqa: F401
-    aggregate,
-    comparators,
-    dipolarity,
-    legacy,
-    metrics,
-    runner,
-    schema,
-    viz,
-)
+from importlib import import_module
 
-# Convenience re-exports — top-level alias so users don't have to remember submodules.
 from .metrics import (
     CompleteMIR,
     complete_mir,
@@ -76,6 +66,28 @@ from .schema import (
     kappa_table,
 )
 
+_LAZY_SUBMODULES = {
+    "aggregate",
+    "comparators",
+    "dipolarity",
+    "legacy",
+    "metrics",
+    "runner",
+    "schema",
+    "stationarity",
+    "viz",
+}
+
+
+def __getattr__(name: str):
+    """Import benchmark submodules lazily to keep optional dependencies optional."""
+    if name in _LAZY_SUBMODULES:
+        module = import_module(f"{__name__}.{name}")
+        globals()[name] = module
+        return module
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     # subpackages / submodules
     "aggregate",
@@ -85,6 +97,7 @@ __all__ = [
     "metrics",
     "runner",
     "schema",
+    "stationarity",
     "viz",
     # metric functions (top-level convenience aliases)
     "complete_mir",

@@ -124,11 +124,17 @@ if not HAS_JAX:
                             args_i.append(np.take(a, i, axis=ax))
                     results.append(func(*args_i))
 
-                # Handle tuple returns like JAX: return tuple of stacked arrays
-                if results and isinstance(results[0], tuple):
-                    n_outputs = len(results[0])
-                    return tuple(np.array([r[j] for r in results]) for j in range(n_outputs))
-                return np.array(results)
+                def stack_tree(items):
+                    first = items[0]
+                    if isinstance(first, tuple):
+                        return tuple(
+                            stack_tree([item[j] for item in items]) for j in range(len(first))
+                        )
+                    if isinstance(first, list):
+                        return [stack_tree([item[j] for item in items]) for j in range(len(first))]
+                    return np.array(items)
+
+                return stack_tree(results)
 
             return vmapped
 
