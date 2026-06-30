@@ -58,6 +58,8 @@ jobs:
 
       - name: Run tests
         shell: bash
+        env:
+          MPLBACKEND: Agg
         run: |
           if [ "${{ matrix.backend }}" == "jax-cpu" ]; then
             python -m pytest tests/ -v --tb=short --backend=cpu --cov=py_amica --cov-report=xml -n auto
