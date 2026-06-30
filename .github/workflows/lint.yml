@@ -2,9 +2,9 @@ name: Lint
 
 on:
   push:
-    branches: [main, production-ready-amica]
+    branches: [main]
   pull_request:
-    branches: [main, production-ready-amica]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:

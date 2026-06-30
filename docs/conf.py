@@ -1,4 +1,4 @@
-"""Sphinx configuration for the PyAMICA documentation."""
+"""Sphinx configuration for the amica documentation."""
 
 from __future__ import annotations
 
@@ -22,8 +22,8 @@ sys.path.insert(0, str(REPO_ROOT))
 # Project information
 # ---------------------------------------------------------------------------
 
-project = "PyAMICA"
-author = "PyAMICA developers"
+project = "amica"
+author = "amica developers"
 
 _today = date.today()
 copyright = f"2024-{_today.year}, {author}. Last updated on {_today.isoformat()}"
@@ -161,15 +161,15 @@ sphinx_gallery_conf = {
 # ---------------------------------------------------------------------------
 
 html_theme = "pydata_sphinx_theme"
-html_title = "PyAMICA"
-html_short_title = "PyAMICA"
+html_title = "amica"
+html_short_title = "amica"
 html_show_sphinx = False
 html_show_copyright = True
 
 html_static_path = ["_static"]
 
 html_theme_options = {
-    "github_url": "https://github.com/snesmaeili/PyAMICA",
+    "github_url": "https://github.com/snesmaeili/amica",
     "use_edit_page_button": True,
     "navigation_with_keys": False,
     "show_toc_level": 2,
@@ -183,7 +183,7 @@ html_theme_options = {
     "icon_links": [
         {
             "name": "GitHub",
-            "url": "https://github.com/snesmaeili/PyAMICA",
+            "url": "https://github.com/snesmaeili/amica",
             "icon": "fa-brands fa-github",
         },
         {
@@ -196,7 +196,7 @@ html_theme_options = {
 
 html_context = {
     "github_user": "snesmaeili",
-    "github_repo": "PyAMICA",
+    "github_repo": "amica",
     "github_version": "main",
     "doc_path": "docs",
 }
