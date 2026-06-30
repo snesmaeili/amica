@@ -54,6 +54,7 @@ mne = [
 
 icalabel = [
   "mne-icalabel>=0.4",
+  "onnxruntime",
 ]
 
 viz = [
@@ -67,6 +68,7 @@ test = [
   "pytest-timeout",
   "pandas>=2.0",
   "scikit-learn>=1.0",
+  "python-picard",
 ]
 
 docs = [
