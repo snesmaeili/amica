@@ -8,14 +8,14 @@ from importlib.metadata import version as get_version
 sys.path.insert(0, os.path.abspath(".."))
 
 # -- Project information -----------------------------------------------------
-project = "amica-python"
-author = "amica-python developers"
+project = "pyamica"
+author = "pyamica developers"
 td = date.today()
 copyright = f"2024-{td.year}, {author}. Last updated on {td.isoformat()}"
 
 
 # The short X.Y version
-version = get_version("amica-python")
+version = get_version("pyamica")
 # The full version, including alpha/beta/rc tags
 release = version
 
@@ -62,7 +62,7 @@ html_theme_options = {
     "icon_links": [
         dict(
             name="GitHub",
-            url="https://github.com/snesmaeili/amica-python",
+            url="https://github.com/snesmaeili/pyamica",
             icon="fab fa-github-square",
         ),
     ],

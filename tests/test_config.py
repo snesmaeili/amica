@@ -1,4 +1,4 @@
-"""Tests for amica_python.config module."""
+"""Tests for py_amica.config module."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from amica_python.config import AmicaConfig
+from py_amica.config import AmicaConfig
 
 
 def test_default_config_valid():

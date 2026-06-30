@@ -1,5 +1,5 @@
 #!/bin/bash
-# Generic Slurm template: run AMICA (amica-python) on one GPU node.
+# Generic Slurm template: run AMICA (pyamica) on one GPU node.
 #
 # A single AMICA fit comfortably fits on one GPU, so a 1-GPU job is the norm.
 # Adapt the #SBATCH lines to YOUR cluster + allocation, set up your environment
@@ -24,7 +24,7 @@ set -euo pipefail
 #   source /path/to/amica-venv/bin/activate
 # Option B — conda:
 #   source ~/miniconda3/etc/profile.d/conda.sh && conda activate amica
-# Option C — a plain venv with `pip install "amica-python[all]"`:
+# Option C — a plain venv with `pip install "pyamica[all]"`:
 source /path/to/amica-venv/bin/activate
 # ---------------------------------------------------------------------------
 
@@ -38,7 +38,7 @@ echo "host=$(hostname)  data=$DATA  out=$OUT  N=$N_COMPONENTS  iters=$MAX_ITER"
 python - "$DATA" "$OUT" "$N_COMPONENTS" "$MAX_ITER" <<'PY'
 import sys
 import mne
-from amica_python import fit_ica
+from py_amica import fit_ica
 
 data, out, n_comp, max_iter = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
 

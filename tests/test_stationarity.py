@@ -4,12 +4,13 @@ Each metric is checked against a case with a known answer (one-hot / uniform
 posteriors, a single clean regime switch, perfectly separable trial features).
 Pure NumPy + scikit-learn; no JAX, no cluster.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from amica_python.benchmark import stationarity as st
+from py_amica.benchmark import stationarity as st
 
 
 def test_n_eff_limits():
@@ -30,7 +31,8 @@ def test_delta_ll():
 
 def test_posterior_entropy_limits():
     T = 100
-    one_hot = np.zeros((3, T)); one_hot[0] = 1.0
+    one_hot = np.zeros((3, T))
+    one_hot[0] = 1.0
     assert np.allclose(st.posterior_entropy_timecourse(one_hot), 0.0, atol=1e-6)
     uniform = np.ones((3, T)) / 3
     assert np.allclose(st.posterior_entropy_timecourse(uniform), np.log(3), atol=1e-6)
@@ -43,8 +45,8 @@ def test_two_regime_switch_signature():
     sfreq = 100.0
     half = 1000
     v = np.zeros((2, 2 * half))
-    v[0, :half] = 1.0      # regime 1 → model 0
-    v[1, half:] = 1.0      # regime 2 → model 1
+    v[0, :half] = 1.0  # regime 1 → model 0
+    v[1, half:] = 1.0  # regime 2 → model 1
     z = st.hard_assignment(v)
     assert z[0] == 0 and z[-1] == 1
     # exactly one switch over 20 s → 0.05 Hz
@@ -59,7 +61,10 @@ def test_stationary_no_switch_signature():
     """A single dominant model everywhere → N_eff≈1, ~zero switching."""
     sfreq = 100.0
     T = 2000
-    v = np.zeros((3, T)); v[0] = 0.95; v[1] = 0.03; v[2] = 0.02
+    v = np.zeros((3, T))
+    v[0] = 0.95
+    v[1] = 0.03
+    v[2] = 0.02
     z = st.hard_assignment(v)
     assert st.switching_rate(z, sfreq) == pytest.approx(0.0)
     summ = st.stationarity_summary(np.array([0.95, 0.03, 0.02]), v, sfreq)
@@ -107,8 +112,9 @@ def test_classify_trial_type_separable_vs_chance():
         onsets.append(on)
         labels.append("A" if cls == 0 else "B")
 
-    res = st.classify_trial_type(v, sfreq, onsets, labels, window_s=win,
-                                 n_splits=5, n_perm=100, random_state=0)
+    res = st.classify_trial_type(
+        v, sfreq, onsets, labels, window_s=win, n_splits=5, n_perm=100, random_state=0
+    )
     assert res is not None
     assert res.accuracy > 0.9
     assert res.chance == pytest.approx(0.5, abs=0.05)
@@ -118,4 +124,5 @@ def test_classify_trial_type_separable_vs_chance():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main([__file__, "-q"]))

@@ -1,7 +1,7 @@
 # Running AMICA on an HPC cluster
 
 `run_amica.sbatch` is a **generic, single-GPU Slurm template** for fitting AMICA
-on your own EEG with `amica-python`. It is intentionally cluster-agnostic — adapt
+on your own EEG with `pyamica`. It is intentionally cluster-agnostic — adapt
 it to your site.
 
 ## Steps
@@ -14,15 +14,15 @@ it to your site.
    module load python/3.11            # + cuda cudnn on Alliance-style clusters
    python -m venv ~/amica-venv && source ~/amica-venv/bin/activate
    pip install --upgrade pip
-   pip install "amica-python[all]"    # or: pip install -e /path/to/amica-python[all]
+   pip install "pyamica[all]"    # or: pip install -e /path/to/pyamica[all]
    python -c "import jax; print(jax.devices())"   # expect a GPU device
    exit
    ```
 
-2. **Edit `run_amica.sbatch`:** set `--account`, the environment block (point it at
+1. **Edit `run_amica.sbatch`:** set `--account`, the environment block (point it at
    `~/amica-venv`), and the modules your site needs.
 
-3. **Submit**, pointing `DATA` at your recording:
+1. **Submit**, pointing `DATA` at your recording:
 
    ```bash
    DATA=/scratch/$USER/sub-01_raw.fif OUT=/scratch/$USER/amica_out sbatch run_amica.sbatch

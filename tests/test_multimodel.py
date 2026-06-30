@@ -1,20 +1,21 @@
 """Tests for multi-model AMICA (num_models > 1).
 
-Stage 1 (this file, first block): the core math in ``amica_python.multimodel``
+Stage 1 (this file, first block): the core math in ``py_amica.multimodel``
 reduces EXACTLY to the single-model accumulator at M=1, and its LL / gamma match
 the existing (previously-unused) scaffolding. Later stages add solver-level
 parity and the Hsu-style synthetic recovery experiment.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from amica_python.backend import jax, jnp
-from amica_python.accumulators import compute_chunk_stats
-from amica_python.likelihood import compute_multimodel_loglikelihood
-from amica_python.updates import update_model_weights
-from amica_python import multimodel as mm
+from py_amica import multimodel as mm
+from py_amica.accumulators import compute_chunk_stats
+from py_amica.backend import jax, jnp
+from py_amica.likelihood import compute_multimodel_loglikelihood
+from py_amica.updates import update_model_weights
 
 ATOL = 1e-11
 
@@ -51,8 +52,15 @@ def test_mm_chunk_stats_M1_equals_single():
 
     c0 = jnp.zeros((1, n), dtype=jnp.float64)
     multi = mm.compute_chunk_stats_mm(
-        data, W[None], c0, alpha[None], mu[None], beta[None], rho[None],
-        jnp.asarray([1.0], dtype=jnp.float64), log_det_sphere,
+        data,
+        W[None],
+        c0,
+        alpha[None],
+        mu[None],
+        beta[None],
+        rho[None],
+        jnp.asarray([1.0], dtype=jnp.float64),
+        log_det_sphere,
     )
 
     # per-component / per-mix accumulators
@@ -146,7 +154,7 @@ def test_mm_gm_equals_update_model_weights():
 # Stage 3 — M=1 parity: the multimodel step reduces EXACTLY to the fused step
 # ---------------------------------------------------------------------------
 
-from amica_python.solver import _amica_step_fused, _amica_step_multimodel  # noqa: E402
+from py_amica.solver import _amica_step_fused, _amica_step_multimodel  # noqa: E402
 
 _NAMES = ["W", "A", "c", "alpha", "mu", "beta", "rho", "gm", "ll", "is_good", "newton_used"]
 
@@ -162,10 +170,24 @@ def test_M1_step_matches_fused(iteration, newt_start):
     data = jnp.asarray(rng.standard_normal((n, T)), dtype=jnp.float64)
 
     args_common = (
-        0.1, 0.05, data, 0.0,           # lrate_step, rholrate, data_white, log_det_sphere
-        newt_start, iteration, 1e-4, 1e4, 1.0, 2.0,
-        True, True, True, True,         # do_newton, do_mean, do_sphere, doscaling
-        True, True, True, True,         # update_alpha/mu/beta/rho
+        0.1,
+        0.05,
+        data,
+        0.0,  # lrate_step, rholrate, data_white, log_det_sphere
+        newt_start,
+        iteration,
+        1e-4,
+        1e4,
+        1.0,
+        2.0,
+        True,
+        True,
+        True,
+        True,  # do_newton, do_mean, do_sphere, doscaling
+        True,
+        True,
+        True,
+        True,  # update_alpha/mu/beta/rho
     )
     # _amica_step_fused donates its state buffers (W,A,c,alpha,mu,beta,rho;
     # Stage 3F donate_argnums) for in-place reuse — safe in the fit loop, which
@@ -178,7 +200,7 @@ def test_M1_step_matches_fused(iteration, newt_start):
         Wm[None], Am[None], cm[None], am[None], mm_[None], bm[None], rm[None], gm, *args_common
     )
 
-    for name, s, m in zip(_NAMES, out_s, out_m):
+    for name, s, m in zip(_NAMES, out_s, out_m, strict=False):
         s = np.asarray(s)
         m = np.asarray(m)
         if name == "gm":
@@ -195,7 +217,7 @@ def test_M1_step_matches_fused(iteration, newt_start):
 # Stage 4 — chunked multimodel == full-batch multimodel
 # ---------------------------------------------------------------------------
 
-from amica_python.solver import _amica_step_multimodel_chunked  # noqa: E402
+from py_amica.solver import _amica_step_multimodel_chunked  # noqa: E402
 
 
 def test_mm_chunked_matches_fullbatch_step():
@@ -213,14 +235,30 @@ def test_mm_chunked_matches_fullbatch_step():
     data = jnp.asarray(rng.standard_normal((n, T)), dtype=jnp.float64)
 
     common = (
-        0.1, 0.05, data, 0.0, 5, 10, 1e-4, 1e4, 1.0, 2.0,
-        True, True, True, True, True, True, True, True,
+        0.1,
+        0.05,
+        data,
+        0.0,
+        5,
+        10,
+        1e-4,
+        1e4,
+        1.0,
+        2.0,
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
     )
     out_full = _amica_step_multimodel(W, A, c, alpha, muu, beta, rho, gm, *common)
     out_chunk = _amica_step_multimodel_chunked(
         W, A, c, alpha, muu, beta, rho, gm, *common, chunk_size=250
     )
-    for name, f, ch in zip(_NAMES, out_full, out_chunk):
+    for name, f, ch in zip(_NAMES, out_full, out_chunk, strict=False):
         assert np.allclose(np.asarray(f), np.asarray(ch), atol=1e-6, rtol=1e-5), (
             f"{name}: chunked != full (max {np.abs(np.asarray(f) - np.asarray(ch)).max():.2e})"
         )
@@ -253,6 +291,7 @@ def test_add_stats_mm_additivity():
 # Stage 5 — Hsu-style recovery: M=2 recovers two concatenated ICA regimes
 # ---------------------------------------------------------------------------
 
+
 def _matched_mean_r(A, B):
     """Hungarian-matched mean |corr| between rows of A and B (n, T each)."""
     from scipy.optimize import linear_sum_assignment
@@ -275,7 +314,7 @@ def test_multimodel_recovers_two_regimes():
     multi-model AMICA should match supervised per-segment ICA on non-stationary
     data, whereas a single model cannot.
     """
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.default_rng(20)
     n = 4
@@ -287,12 +326,14 @@ def test_multimodel_recovers_two_regimes():
     S2 = rng.laplace(size=(n, Tseg))
     X = np.concatenate([A1 @ S1, A2 @ S2], axis=1)  # (n, 2*Tseg)
 
-    cfg2 = AmicaConfig(num_models=2, max_iter=400, num_mix_comps=3,
-                       do_newton=True, do_sphere=True, do_mean=True)
+    cfg2 = AmicaConfig(
+        num_models=2, max_iter=400, num_mix_comps=3, do_newton=True, do_sphere=True, do_mean=True
+    )
     r2 = Amica(cfg2, random_state=1).fit(X)
 
-    cfg1 = AmicaConfig(num_models=1, max_iter=400, num_mix_comps=3,
-                       do_newton=True, do_sphere=True, do_mean=True)
+    cfg1 = AmicaConfig(
+        num_models=1, max_iter=400, num_mix_comps=3, do_newton=True, do_sphere=True, do_mean=True
+    )
     r1 = Amica(cfg1, random_state=1).fit(X)
 
     ll2 = float(r2.log_likelihood[-1])
@@ -317,7 +358,7 @@ def test_multimodel_recovers_two_regimes():
         for k, (_S, sl) in segs.items():
             post[h, k] = v[h, sl].mean()
 
-    print("\n[recovery] LL: M=2 %.4f vs M=1 %.4f" % (ll2, ll1))
+    print(f"\n[recovery] LL: M=2 {ll2:.4f} vs M=1 {ll1:.4f}")
     print("[recovery] gm =", np.round(np.asarray(r2.gm_), 3))
     print("[recovery] matched|r| [model x segment]=\n", np.round(match, 3))
     print("[recovery] mean posterior [model x segment]=\n", np.round(post, 3))
@@ -327,14 +368,12 @@ def test_multimodel_recovers_two_regimes():
     # (b) models specialize by regime: the best model for seg0 != best for seg1
     best_for_seg = post.argmax(axis=0)  # which model dominates each segment
     assert best_for_seg[0] != best_for_seg[1], (
-        f"models did not separate the regimes (post=\n{np.round(post,3)})"
+        f"models did not separate the regimes (post=\n{np.round(post, 3)})"
     )
     # (c) each segment's dominant model recovers that segment's sources well
     for k in range(2):
         h = best_for_seg[k]
-        assert match[h, k] > 0.85, (
-            f"segment {k} recovery weak: matched|r|={match[h, k]:.3f}"
-        )
+        assert match[h, k] > 0.85, f"segment {k} recovery weak: matched|r|={match[h, k]:.3f}"
     # (d) gamma ~ equal segment fractions
     assert np.allclose(np.sort(np.asarray(r2.gm_)), [0.5, 0.5], atol=0.15)
 
@@ -343,7 +382,7 @@ def test_multimodel_rejection():
     """M>1 likelihood sample rejection: planted spikes are flagged in sample_mask_
     (one global mask across models, thresholding the mixture LL), and do_reject=False
     leaves the mask unset (the multimodel anchor)."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(0)
     data = rng.laplace(size=(5, 1500))
@@ -351,8 +390,10 @@ def test_multimodel_rejection():
     data[:, spikes] *= 60.0
 
     common = dict(num_models=2, max_iter=40, do_newton=False)
-    res = Amica(AmicaConfig(**common, do_reject=True, rejstart=5, rejint=5,
-                            numrej=2, rejsig=3.0), random_state=0).fit(data)
+    res = Amica(
+        AmicaConfig(**common, do_reject=True, rejstart=5, rejint=5, numrej=2, rejsig=3.0),
+        random_state=0,
+    ).fit(data)
     assert res.sample_mask_ is not None
     assert res.sample_mask_.shape == (1500,) and res.sample_mask_.dtype == bool
     assert res.n_rejected_ == int((~res.sample_mask_).sum()) > 0
@@ -366,4 +407,5 @@ def test_multimodel_rejection():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main([__file__, "-q", "-s"]))

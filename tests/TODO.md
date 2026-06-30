@@ -26,7 +26,6 @@ populate it at the end of the rejection block.
 are flagged (i.e. `result.rejection_mask_[spike_idx]` are False).
 Currently that assertion is missing because the mask is not exposed.
 
-
 ### 1. `check_estimator` — blocked, Medium-High effort
 
 **What**: `sklearn.utils.estimator_checks.check_estimator(Amica(...))` — full sklearn API compliance.
@@ -38,6 +37,7 @@ sklearn introspects `__init__` params for `get_params()` / `set_params()` — th
 pattern is incompatible without refactoring.
 
 **What it would take**:
+
 - Inherit `Amica` from `BaseEstimator`
 - Either (a) flatten all `AmicaConfig` fields into `Amica.__init__` kwargs, or
   (b) implement `get_params()` / `set_params()` manually to delegate into `self.config`
@@ -45,7 +45,7 @@ pattern is incompatible without refactoring.
 
 scott-huberty already has this in 12 lines — their `Amica` takes flat params not a config object.
 
----
+______________________________________________________________________
 
 ### 2. Fortran parity: alpha / mu / sbeta / rho — blocked, needs fixtures
 
@@ -58,6 +58,7 @@ directory (files: `W`, `A`, `S`, `mean`, `alpha`, `mu`, `sbeta`, `rho`, `c`, `gm
 committed under `tests/fixtures/fortran_6ch/`.
 
 **What it would take**:
+
 1. Run `amica17` binary on reproducible 6-ch data (fixed seed, saved as `tests/fixtures/fortran_6ch/data.npy`)
-2. Commit the output files
-3. Write test: load fixture → run Python solver same config → compare all params with tight tolerance
+1. Commit the output files
+1. Write test: load fixture → run Python solver same config → compare all params with tight tolerance

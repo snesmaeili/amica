@@ -1,9 +1,9 @@
-# amica-python
+# pyamica
 
-[![Tests](https://github.com/snesmaeili/amica-python/actions/workflows/tests.yml/badge.svg)](https://github.com/snesmaeili/amica-python/actions/workflows/tests.yml)
-[![codecov](https://codecov.io/gh/snesmaeili/amica-python/branch/main/graph/badge.svg)](https://codecov.io/gh/snesmaeili/amica-python)
-[![Python](https://img.shields.io/pypi/pyversions/amica-python.svg)](https://pypi.org/project/amica-python/)
-[![Docs](https://github.com/snesmaeili/amica-python/actions/workflows/docs.yml/badge.svg)](https://github.com/snesmaeili/amica-python/actions/workflows/docs.yml)
+[![Tests](https://github.com/snesmaeili/pyamica/actions/workflows/tests.yml/badge.svg)](https://github.com/snesmaeili/pyamica/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/snesmaeili/pyamica/branch/main/graph/badge.svg)](https://codecov.io/gh/snesmaeili/pyamica)
+[![Python](https://img.shields.io/pypi/pyversions/pyamica.svg)](https://pypi.org/project/pyamica/)
+[![Docs](https://github.com/snesmaeili/pyamica/actions/workflows/docs.yml/badge.svg)](https://github.com/snesmaeili/pyamica/actions/workflows/docs.yml)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
 > **Note:** This package is under active validation. The core algorithm works and matches MATLAB AMICA numerically, but the full validation suite and documentation are still in progress.
@@ -15,8 +15,8 @@ This package provides the full algorithm in Python with optional JAX acceleratio
 ## Installation
 
 ```bash
-git clone https://github.com/snesmaeili/amica-python.git
-cd amica-python
+git clone https://github.com/snesmaeili/pyamica.git
+cd pyamica
 pip install -e ".[all]"
 ```
 
@@ -25,13 +25,14 @@ Extras: `jax` (JAX backend), `mne` (MNE-Python integration), `dev` (testing).
 ## Usage
 
 The fastest way to get started is to look at our fully commented examples in the `examples/` directory:
+
 - [**MNE Integration** (`examples/01_mne_integration.py`)](examples/01_mne_integration.py): Shows how to load EEG data, filter it, and run AMICA using the MNE `fit_ica()` wrapper.
 - [**Pure JAX Fitting** (`examples/02_pure_jax_fitting.py`)](examples/02_pure_jax_fitting.py): Shows how to configure the core `AmicaConfig` and run hardware-accelerated fitting directly on numpy arrays.
 
 ### Core API Quickstart
 
 ```python
-from amica_python import Amica, AmicaConfig
+from py_amica import Amica, AmicaConfig
 
 config = AmicaConfig(max_iter=2000, num_mix_comps=3)
 model = Amica(config, random_state=42)
@@ -44,7 +45,7 @@ sources = model.transform(data)
 `fit_ica` returns a standard `mne.preprocessing.ICA` object, so all MNE methods work out of the box:
 
 ```python
-from amica_python import fit_ica
+from py_amica import fit_ica
 
 ica = fit_ica(raw, n_components=20, max_iter=2000)
 ica.plot_components()
@@ -56,12 +57,12 @@ ica.apply(raw)
 AMICA can fit a mixture of `M` ICA models — distinct unmixing matrices for distinct temporal regimes of non-stationary data (Palmer 2011; Hsu et al. 2018). `fit_ica(num_models=M)` returns the highest-weight model as the primary `mne.preprocessing.ICA` (so `apply`/`plot`/`get_sources` work unchanged), with the full multi-model result attached and any model retrievable:
 
 ```python
-from amica_python import fit_ica, get_model_ica
+from py_amica import fit_ica, get_model_ica
 
 ica = fit_ica(raw, n_components=20, fit_params={"num_models": 3})
-ica.apply(raw)                                   # primary (highest-weight) model
+ica.apply(raw)  # primary (highest-weight) model
 posteriors = ica.amica_result_.model_posteriors_  # (M, n_times): p(model | t)
-model2 = get_model_ica(ica, 2)                   # any model's ICA object
+model2 = get_model_ica(ica, 2)  # any model's ICA object
 ```
 
 Likelihood-based sample rejection is currently single-model only.
@@ -75,10 +76,10 @@ source-density parameters (α, μ, β, ρ) — use `Amica(...).fit()`, which ret
 an `AmicaResult`.
 
 ```python
-from amica_python import amica
+from py_amica import amica
 
 # X: (n_features, n_samples), features x samples
-K, W, Y = amica(X)                              # K is None; W = unmixing, Y = sources
+K, W, Y = amica(X)  # K is None; W = unmixing, Y = sources
 K, W, Y, n_iter = amica(X, return_n_iter=True)
 ```
 
@@ -92,7 +93,7 @@ account/modules/venv and point it at your recording. Details in
 ## Repository layout
 
 ```
-amica_python/   the package: core algorithm, JAX/NumPy backends, MNE integration
+py_amica/   the package: core algorithm, JAX/NumPy backends, MNE integration
 examples/       runnable usage examples (local API + cluster template)
 tests/          unit and numerical-parity tests
 docs/           Sphinx documentation

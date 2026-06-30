@@ -34,13 +34,14 @@ repos:
     rev: v2.0.0
     hooks:
       - id: mypy
+        exclude: ^py_amica/benchmark/
         additional_dependencies: [numpy, types-setuptools]
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.2
     hooks:
       - id: codespell
-        args: ["-L", "amica,sur,nd,numer"]
+        args: ["-L", "amica,sur,nd,numer,fro"]
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0

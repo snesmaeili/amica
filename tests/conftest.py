@@ -9,6 +9,7 @@ Markers:
   gpu   - skip unless --backend=gpu and a JAX GPU device is reachable
   slow  - skip unless --run-slow is passed
 """
+
 from __future__ import annotations
 
 import os
@@ -16,8 +17,8 @@ import os
 import numpy as np
 import pytest
 
-
 # ── CLI options ───────────────────────────────────────────────────────────────
+
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -66,6 +67,7 @@ def pytest_collection_modifyitems(config, items):
 
 # ── Session-scoped fixtures ───────────────────────────────────────────────────
 
+
 @pytest.fixture(scope="session")
 def rng():
     return np.random.RandomState(42)
@@ -96,9 +98,7 @@ def synthetic_raw(rng):
 
     n_ch, n_samp = 8, 2000
     data = rng.randn(n_ch, n_samp) * 1e-6
-    info = mne.create_info(
-        [f"EEG{i:03d}" for i in range(n_ch)], sfreq=256.0, ch_types="eeg"
-    )
+    info = mne.create_info([f"EEG{i:03d}" for i in range(n_ch)], sfreq=256.0, ch_types="eeg")
     return mne.io.RawArray(data, info, verbose=False)
 
 
@@ -107,6 +107,7 @@ def active_backend():
     """Return the string name of the active JAX backend (or 'numpy')."""
     try:
         import jax
+
         return jax.default_backend()
     except Exception:
         return "numpy"

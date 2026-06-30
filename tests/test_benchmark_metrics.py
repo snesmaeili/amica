@@ -1,31 +1,31 @@
-"""Unit tests for ``amica_python.benchmark.metrics``.
+"""Unit tests for ``py_amica.benchmark.metrics``.
 
 Run via:
     pytest tests/test_benchmark_metrics.py -v
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from amica_python.benchmark.metrics import (
-    kappa,
-    entropy_histogram,
-    pairwise_mi_matrix,
-    mean_pairwise_mi,
-    complete_mir,
-    remnant_pmi,
+from py_amica.benchmark.metrics import (
     _validate_mir_inputs,
+    complete_mir,
+    kappa,
+    mean_pairwise_mi,
+    pairwise_mi_matrix,
+    remnant_pmi,
 )
-
 
 # ---------------------------------------------------------------------------
 # κ
 # ---------------------------------------------------------------------------
 
+
 def test_kappa_arithmetic():
-    assert kappa(150_000, 120) == pytest.approx(150_000 / (120 ** 2))
-    assert kappa(780_000, 120) == pytest.approx(780_000 / (120 ** 2))
+    assert kappa(150_000, 120) == pytest.approx(150_000 / (120**2))
+    assert kappa(780_000, 120) == pytest.approx(780_000 / (120**2))
 
 
 def test_kappa_zero_channels_raises():
@@ -36,6 +36,7 @@ def test_kappa_zero_channels_raises():
 # ---------------------------------------------------------------------------
 # Identity / permutation transforms -> MIR ~ 0
 # ---------------------------------------------------------------------------
+
 
 def _gaussian_sources(rng, n=4, t=20_000):
     return rng.standard_normal((n, t))
@@ -74,6 +75,7 @@ def test_orthogonal_rotation_zero_mir():
 # PMI matrix properties
 # ---------------------------------------------------------------------------
 
+
 def test_pmi_diagonal_is_zero():
     rng = np.random.default_rng(3)
     X = rng.standard_normal((5, 20_000))
@@ -100,6 +102,7 @@ def test_pmi_nonneg_for_independent_gaussians():
 # remnant PMI
 # ---------------------------------------------------------------------------
 
+
 def test_remnant_pmi_nonneg():
     rng = np.random.default_rng(6)
     X = rng.standard_normal((4, 10_000))
@@ -112,10 +115,11 @@ def test_remnant_pmi_nonneg():
 # Rectangular W requires subspace_mode
 # ---------------------------------------------------------------------------
 
+
 def test_rectangular_W_requires_subspace_mode():
     X = np.random.randn(5, 1000)
     Y = np.random.randn(3, 1000)
-    W = np.random.randn(3, 5)        # rectangular: PCA-then-ICA without subspace flag
+    W = np.random.randn(3, 5)  # rectangular: PCA-then-ICA without subspace flag
     with pytest.raises(ValueError, match="not square"):
         _validate_mir_inputs(X, Y, W, subspace_mode=False)
     # subspace_mode=True allows square retained-rank W:
@@ -151,7 +155,8 @@ def test_complete_mir_from_ica_on_synthetic_mixture():
     pytest.importorskip("mne")
     pytest.importorskip("picard")
     import mne
-    from amica_python.benchmark.metrics import complete_mir_from_ica
+
+    from py_amica.benchmark.metrics import complete_mir_from_ica
 
     rng = np.random.default_rng(8)
     n_ch = 6
@@ -177,7 +182,9 @@ def test_complete_mir_from_ica_on_synthetic_mixture():
     ica.fit(raw, verbose="ERROR")
     result = complete_mir_from_ica(raw, ica, n_bins=80, max_samples=None)
     # On a clean linear mixture of heavy-tailed sources, complete MIR > 0 (ICA helps).
-    assert result.bits_per_sample > 0, f"Expected positive MIR on heavy-tailed mixture, got {result}"
+    assert result.bits_per_sample > 0, (
+        f"Expected positive MIR on heavy-tailed mixture, got {result}"
+    )
     assert result.subspace_mode is True
     assert result.n_components == n_ch
     assert np.isfinite(result.log2_abs_det_W)
@@ -193,7 +200,8 @@ def test_complete_mir_invariant_to_source_scale():
     pytest.importorskip("mne")
     pytest.importorskip("picard")
     import mne
-    from amica_python.benchmark.metrics import complete_mir_from_ica
+
+    from py_amica.benchmark.metrics import complete_mir_from_ica
 
     rng = np.random.default_rng(11)
     n_ch = 6
@@ -204,9 +212,13 @@ def test_complete_mir_invariant_to_source_scale():
     X = A @ sources_true
     info = mne.create_info(ch_names=[f"EEG{i}" for i in range(n_ch)], sfreq=100.0, ch_types="eeg")
     raw = mne.io.RawArray(X, info, verbose="ERROR")
-    ica = mne.preprocessing.ICA(n_components=n_ch, method="picard",
-                                fit_params={"ortho": False, "extended": True},
-                                max_iter=1500, random_state=0)
+    ica = mne.preprocessing.ICA(
+        n_components=n_ch,
+        method="picard",
+        fit_params={"ortho": False, "extended": True},
+        max_iter=1500,
+        random_state=0,
+    )
     ica.fit(raw, verbose="ERROR")
     baseline = complete_mir_from_ica(raw, ica, n_bins=80, max_samples=None)
 
@@ -231,16 +243,21 @@ def test_Y_equals_W_at_X_numerically():
     pytest.importorskip("mne")
     pytest.importorskip("picard")
     import mne
-    from amica_python.benchmark.metrics import pca_inputs_from_ica
+
+    from py_amica.benchmark.metrics import pca_inputs_from_ica
 
     rng = np.random.default_rng(12)
     n_ch = 5
     X = rng.standard_normal((n_ch, 3000))
     info = mne.create_info(ch_names=[f"EEG{i}" for i in range(n_ch)], sfreq=100.0, ch_types="eeg")
     raw = mne.io.RawArray(X, info, verbose="ERROR")
-    ica = mne.preprocessing.ICA(n_components=n_ch, method="picard",
-                                fit_params={"ortho": False, "extended": True},
-                                max_iter=500, random_state=0)
+    ica = mne.preprocessing.ICA(
+        n_components=n_ch,
+        method="picard",
+        fit_params={"ortho": False, "extended": True},
+        max_iter=500,
+        random_state=0,
+    )
     ica.fit(raw, verbose="ERROR")
     X_pca, W_square = pca_inputs_from_ica(ica, raw)
     Y_reconstructed = W_square @ X_pca
@@ -257,7 +274,8 @@ def test_clip_choice_does_not_flip_ranking():
     pytest.importorskip("mne")
     pytest.importorskip("picard")
     import mne
-    from amica_python.benchmark.metrics import complete_mir_from_ica
+
+    from py_amica.benchmark.metrics import complete_mir_from_ica
 
     rng = np.random.default_rng(13)
     n_ch = 5
@@ -269,19 +287,31 @@ def test_clip_choice_does_not_flip_ranking():
     info = mne.create_info(ch_names=[f"EEG{i}" for i in range(n_ch)], sfreq=100.0, ch_types="eeg")
     raw = mne.io.RawArray(X, info, verbose="ERROR")
     # Fit two methods so we can check ranking stability
-    ica_picard = mne.preprocessing.ICA(n_components=n_ch, method="picard",
-                                       fit_params={"ortho": False, "extended": True},
-                                       max_iter=1000, random_state=0)
+    ica_picard = mne.preprocessing.ICA(
+        n_components=n_ch,
+        method="picard",
+        fit_params={"ortho": False, "extended": True},
+        max_iter=1000,
+        random_state=0,
+    )
     ica_picard.fit(raw, verbose="ERROR")
-    ica_fastica = mne.preprocessing.ICA(n_components=n_ch, method="fastica",
-                                        fit_params={"fun": "logcosh"},
-                                        max_iter=1000, random_state=0)
+    ica_fastica = mne.preprocessing.ICA(
+        n_components=n_ch,
+        method="fastica",
+        fit_params={"fun": "logcosh"},
+        max_iter=1000,
+        random_state=0,
+    )
     ica_fastica.fit(raw, verbose="ERROR")
 
     rankings = {}
     for clip in (5.0, 8.0, 10.0):
-        mir_p = complete_mir_from_ica(raw, ica_picard, n_bins=80, clip_sd=clip, max_samples=None).bits_per_sample
-        mir_f = complete_mir_from_ica(raw, ica_fastica, n_bins=80, clip_sd=clip, max_samples=None).bits_per_sample
+        mir_p = complete_mir_from_ica(
+            raw, ica_picard, n_bins=80, clip_sd=clip, max_samples=None
+        ).bits_per_sample
+        mir_f = complete_mir_from_ica(
+            raw, ica_fastica, n_bins=80, clip_sd=clip, max_samples=None
+        ).bits_per_sample
         rankings[clip] = "picard>fastica" if mir_p > mir_f else "fastica>picard"
     # Stability is required for moderate-to-wide clip ranges (5-10 σ). Very
     # tight clips (±3 σ) can flip the ranking on heavy-tailed sources, which
@@ -296,7 +326,9 @@ def test_complete_mir_uses_stable_slogdet():
     instead of np.linalg.det → log (which overflows for high-dim or scaled W).
     """
     import inspect
-    from amica_python.benchmark import metrics
+
+    from py_amica.benchmark import metrics
+
     src = inspect.getsource(metrics.complete_mir)
     assert "slogdet" in src, (
         "complete_mir() must use np.linalg.slogdet for numerical stability; "
@@ -326,10 +358,12 @@ def test_amica_and_mne_use_same_pca_xspace():
     """
     pytest.importorskip("mne")
     pytest.importorskip("picard")
-    pytest.importorskip("amica_python")
-    import mne
+    pytest.importorskip("py_amica")
     import os
-    from amica_python.benchmark.metrics import pca_inputs_from_ica
+
+    import mne
+
+    from py_amica.benchmark.metrics import pca_inputs_from_ica
 
     rng = np.random.default_rng(21)
     n_ch = 6
@@ -342,18 +376,26 @@ def test_amica_and_mne_use_same_pca_xspace():
     raw = mne.io.RawArray(X, info, verbose="ERROR")
 
     # MNE Picard
-    ica_picard = mne.preprocessing.ICA(n_components=n_ch, method="picard",
-                                       fit_params={"ortho": False, "extended": True},
-                                       max_iter=1000, random_state=0)
+    ica_picard = mne.preprocessing.ICA(
+        n_components=n_ch,
+        method="picard",
+        fit_params={"ortho": False, "extended": True},
+        max_iter=1000,
+        random_state=0,
+    )
     ica_picard.fit(raw, verbose="ERROR")
     X_pca_picard, _ = pca_inputs_from_ica(ica_picard, raw)
 
     # AMICA-Python (NumPy CPU; light fit just to get pca_components_)
     os.environ["AMICA_NO_JAX"] = "1"
     os.environ["JAX_PLATFORM_NAME"] = "cpu"
-    import importlib, amica_python.backend
-    importlib.reload(amica_python.backend)
-    from amica_python import fit_ica
+    import importlib
+
+    import py_amica.backend
+
+    importlib.reload(py_amica.backend)
+    from py_amica import fit_ica
+
     ica_amica = fit_ica(raw, n_components=n_ch, max_iter=20, random_state=0)
     X_pca_amica, _ = pca_inputs_from_ica(ica_amica, raw)
 
@@ -378,8 +420,9 @@ def test_amica_convergence_trace_healthy(monkeypatch):
     finite. This catches regressions that would make MIR uninterpretable.
     """
     pytest.importorskip("mne")
-    pytest.importorskip("amica_python")
+    pytest.importorskip("py_amica")
     import mne
+
     rng = np.random.default_rng(22)
     n_ch = 6
     sources_true = rng.standard_t(df=3, size=(n_ch, 3000))
@@ -389,9 +432,13 @@ def test_amica_convergence_trace_healthy(monkeypatch):
     raw = mne.io.RawArray(X, info, verbose="ERROR")
     monkeypatch.setenv("AMICA_NO_JAX", "1")
     monkeypatch.setenv("JAX_PLATFORM_NAME", "cpu")
-    import importlib, amica_python.backend
-    importlib.reload(amica_python.backend)
-    from amica_python import fit_ica
+    import importlib
+
+    import py_amica.backend
+
+    importlib.reload(py_amica.backend)
+    from py_amica import fit_ica
+
     try:
         ica = fit_ica(raw, n_components=n_ch, max_iter=50, random_state=0)
         result = getattr(ica, "amica_result_", None)
@@ -407,7 +454,7 @@ def test_amica_convergence_trace_healthy(monkeypatch):
     finally:
         monkeypatch.delenv("AMICA_NO_JAX", raising=False)
         monkeypatch.delenv("JAX_PLATFORM_NAME", raising=False)
-        importlib.reload(amica_python.backend)
+        importlib.reload(py_amica.backend)
 
 
 def test_complete_mir_from_ica_truncated_raises():
@@ -415,7 +462,8 @@ def test_complete_mir_from_ica_truncated_raises():
     pytest.importorskip("mne")
     pytest.importorskip("picard")
     import mne
-    from amica_python.benchmark.metrics import complete_mir_from_ica
+
+    from py_amica.benchmark.metrics import complete_mir_from_ica
 
     rng = np.random.default_rng(9)
     n_ch = 6

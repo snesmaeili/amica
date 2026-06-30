@@ -9,11 +9,11 @@ API Documentation
 AMICA ICA Model
 ===============
 
-.. automodule:: amica_python
+.. automodule:: py_amica
    :no-members:
    :no-inherited-members:
 
-.. currentmodule:: amica_python
+.. currentmodule:: py_amica
 
 Classes:
 

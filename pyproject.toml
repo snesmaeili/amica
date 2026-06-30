@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "amica-python"
+name = "pyamica"
 version = "0.1.0"
 description = "Native Python AMICA (Adaptive Mixture ICA) for MNE-Python"
 readme = "README.md"
@@ -31,7 +31,7 @@ mne = ["mne>=1.0"]
 icalabel = ["mne-icalabel>=0.4"]
 viz = ["matplotlib>=3.5"]
 benchmark = [
-    "amica-python[mne,icalabel,viz]",
+    "pyamica[mne,icalabel,viz]",
     "pandas>=2.0",
     "scipy>=1.7",
     "scikit-learn>=1.0",
@@ -40,8 +40,8 @@ benchmark = [
     "onnxruntime>=1.15",
 ]
 test = ["pytest>=7.0", "pytest-cov", "pytest-xdist", "pytest-timeout"]
-dev = ["amica-python[test]", "sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme", "myst-parser", "pre-commit>=3.0", "ruff>=0.9", "towncrier>=23.0", "nox"]
-all = ["jax>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "amica-python[benchmark]"]
+dev = ["pyamica[test]", "sphinx>=5.0", "numpydoc", "sphinx-gallery", "pydata-sphinx-theme", "myst-parser", "pre-commit>=3.0", "ruff>=0.9", "towncrier>=23.0", "nox"]
+all = ["jax>=0.4", "mne>=1.0", "matplotlib>=3.5", "mne-icalabel>=0.4", "pyamica[benchmark]"]
 
 [dependency-groups]
 test = [
@@ -70,11 +70,11 @@ dev = [
 ]
 
 [tool.towncrier]
-package = "amica_python"
+package = "py_amica"
 filename = "CHANGELOG.md"
 directory = "changes"
-title_format = "## [{version}](https://github.com/snesmaeili/amica-python/releases/tag/v{version}) ({project_date})"
-issue_format = "[#{issue}](https://github.com/snesmaeili/amica-python/pull/{issue})"
+title_format = "## [{version}](https://github.com/snesmaeili/pyamica/releases/tag/v{version}) ({project_date})"
+issue_format = "[#{issue}](https://github.com/snesmaeili/pyamica/pull/{issue})"
 template = "changes/template.md"
 
 [[tool.towncrier.type]]
@@ -103,11 +103,11 @@ name = "Authors"
 showcontent = true
 
 [project.urls]
-Homepage = "https://github.com/snesmaeili/amica-python"
-Repository = "https://github.com/snesmaeili/amica-python"
+Homepage = "https://github.com/snesmaeili/pyamica"
+Repository = "https://github.com/snesmaeili/pyamica"
 
 [tool.setuptools.packages.find]
-include = ["amica_python*"]
+include = ["py_amica*"]
 
 [tool.ruff]
 line-length = 100
@@ -118,7 +118,11 @@ extend-select = ["B", "UP"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["amica_python"]
+known-first-party = ["py_amica"]
+
+[[tool.mypy.overrides]]
+module = ["py_amica.benchmark.*"]
+ignore_errors = true
 
 [tool.pytest]
 minversion = "9"
@@ -140,4 +144,4 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-omit = ["amica_python/binary.py"]
+omit = ["py_amica/binary.py"]

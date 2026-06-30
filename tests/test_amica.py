@@ -1,4 +1,4 @@
-"""Tests for amica-python package."""
+"""Tests for pyamica package."""
 
 import os
 import subprocess
@@ -10,7 +10,7 @@ import pytest
 
 def test_fit_random_data():
     """Test basic fitting on random data."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(42)
     n_channels, n_samples = 4, 500
@@ -33,7 +33,7 @@ def test_fit_random_data():
 
 def test_transform_inverse():
     """Test that transform + inverse_transform reconstructs data."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(42)
     n_channels, n_samples = 4, 500
@@ -50,13 +50,15 @@ def test_transform_inverse():
     assert recon.shape == (n_channels, n_samples)
 
     # Linear unmix→remix is algebraically exact; residual should be at machine-eps level.
-    frob_rel = np.linalg.norm(data - recon, "fro") / np.linalg.norm(data, "fro")
-    assert frob_rel < 1e-12, f"Round-trip Frobenius relative residual too high: {frob_rel:.2e}"
+    fro_norm_rel = np.linalg.norm(data - recon, "fro") / np.linalg.norm(data, "fro")
+    assert fro_norm_rel < 1e-12, (
+        f"Round-trip Frobenius relative residual too high: {fro_norm_rel:.2e}"
+    )
 
 
 def test_ll_increases():
     """Test that log-likelihood generally increases over iterations."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(123)
     n_channels, n_samples = 4, 1000
@@ -80,7 +82,7 @@ def test_ll_increases():
 
 def test_amica_function():
     """Test amica() functional API returns correct shapes."""
-    from amica_python import amica
+    from py_amica import amica
 
     rng = np.random.RandomState(42)
     n_components, n_samples = 4, 500
@@ -95,7 +97,7 @@ def test_amica_function():
 
 def test_amica_return_n_iter():
     """Test return_n_iter flag."""
-    from amica_python import amica
+    from py_amica import amica
 
     rng = np.random.RandomState(42)
     X = rng.randn(4, 500)
@@ -113,7 +115,7 @@ def test_amica_return_n_iter():
 
 def test_separate_laplacian_sources():
     """Test separation of known Laplacian sources."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(0)
     n_sources, n_samples = 3, 5000
@@ -151,7 +153,7 @@ def test_separate_laplacian_sources():
 
 def test_matrix_shapes_and_consistency():
     """Test all four matrices have correct shapes and are consistent."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(42)
     n_channels, n_samples = 6, 2000
@@ -186,7 +188,7 @@ def test_matrix_shapes_and_consistency():
 
 def test_sensor_roundtrip():
     """Test mixing_sensor @ unmixing_sensor ≈ I for full-rank data."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(42)
     n_channels, n_samples = 4, 1000
@@ -206,7 +208,7 @@ def test_sensor_roundtrip():
 
 def test_defaults():
     """Test default config values match literature recommendations."""
-    from amica_python import AmicaConfig
+    from py_amica import AmicaConfig
 
     cfg = AmicaConfig()
     assert cfg.max_iter == 2000
@@ -220,7 +222,7 @@ def test_defaults():
 
 def test_invalid_config():
     """Test that invalid config raises errors."""
-    from amica_python import AmicaConfig
+    from py_amica import AmicaConfig
 
     with pytest.raises(ValueError):
         AmicaConfig(num_models=0)
@@ -244,7 +246,7 @@ def test_invalid_config():
 )
 def test_nonfinite_input_raises(bad_data, label):
     """Fit must raise ValueError on NaN or Inf input."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     data = bad_data() if callable(bad_data) else bad_data
     model = Amica(AmicaConfig(max_iter=2), random_state=0)
@@ -262,7 +264,7 @@ def _inject(arr, row, col, value):
 
 def test_rejection_enabled():
     """Test that rejection runs without errors when enabled."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(42)
     n_channels, n_samples = 4, 1000
@@ -287,15 +289,13 @@ def test_rejection_enabled():
     assert len(result.log_likelihood) > 0
 
 
-
-
 """Chunked E-step should match full-batch within float64 rounding."""
 
 
 def test_chunked_loglik_additivity():
     """sum(compute_loglik_chunk) across halves == compute_total_loglikelihood."""
-    from amica_python.backend import jnp
-    from amica_python.likelihood import (
+    from py_amica.backend import jnp
+    from py_amica.likelihood import (
         compute_loglik_chunk,
         compute_total_loglikelihood,
     )
@@ -344,7 +344,7 @@ def test_chunked_loglik_additivity():
 
 def test_chunked_matches_fullbatch_synthetic():
     """Chunked vs full-batch: W and LL agree within rounding after 50 iters."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(42)
     n_src, n_samp = 4, 5000
@@ -386,7 +386,7 @@ def tiny_data():
 
 def test_newton_path(tiny_data):
     """Test the full Newton correction path."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     config = AmicaConfig(
         do_newton=True,
@@ -401,7 +401,7 @@ def test_newton_path(tiny_data):
 
 def test_chunked_path(tiny_data):
     """Test accumulator path with time-axis chunking and Newton."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     config = AmicaConfig(
         chunk_size=5,  # Smaller than n_samples (20)
@@ -416,7 +416,7 @@ def test_chunked_path(tiny_data):
 
 def test_chunked_path_no_updates(tiny_data):
     """Test accumulator path with no parameter updates."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     config = AmicaConfig(
         chunk_size=5,
@@ -436,9 +436,10 @@ def test_chunked_path_no_updates(tiny_data):
 # Auto chunk_size tests
 # ---------------------------------------------------------------------------
 
+
 def test_auto_chunk_size_returns_valid_int():
     """_choose_chunk_size returns int in [1, n_samples]."""
-    from amica_python.solver import _choose_chunk_size
+    from py_amica.solver import _choose_chunk_size
 
     cs = _choose_chunk_size(n_samples=10000, n_components=32, n_mix_comps=3)
     assert isinstance(cs, int)
@@ -447,7 +448,7 @@ def test_auto_chunk_size_returns_valid_int():
 
 def test_auto_chunk_size_bounded_by_n_samples():
     """_choose_chunk_size never exceeds n_samples."""
-    from amica_python.solver import _choose_chunk_size
+    from py_amica.solver import _choose_chunk_size
 
     cs = _choose_chunk_size(n_samples=100, n_components=4, n_mix_comps=3)
     assert cs <= 100
@@ -457,7 +458,8 @@ def test_auto_chunk_size_small_budget():
     """_choose_chunk_size returns small chunk when available RAM is tiny."""
     psutil = pytest.importorskip("psutil")
     from unittest.mock import MagicMock, patch
-    from amica_python.solver import _choose_chunk_size
+
+    from py_amica.solver import _choose_chunk_size
 
     mock_vmem = MagicMock()
     mock_vmem.available = 5 * 1024 * 1024  # 5 MiB
@@ -470,7 +472,7 @@ def test_auto_chunk_size_small_budget():
 
 def test_chunk_size_auto_config_accepted():
     """AmicaConfig accepts chunk_size='auto' without error."""
-    from amica_python.config import AmicaConfig
+    from py_amica.config import AmicaConfig
 
     cfg = AmicaConfig(chunk_size="auto")
     assert cfg.chunk_size == "auto"
@@ -478,7 +480,7 @@ def test_chunk_size_auto_config_accepted():
 
 def test_chunk_size_auto_config_rejects_bad_string():
     """AmicaConfig rejects unknown string for chunk_size."""
-    from amica_python.config import AmicaConfig
+    from py_amica.config import AmicaConfig
 
     with pytest.raises(ValueError, match="chunk_size"):
         AmicaConfig(chunk_size="bad")
@@ -486,7 +488,7 @@ def test_chunk_size_auto_config_rejects_bad_string():
 
 def test_chunk_size_auto_fit_completes(tiny_data):
     """chunk_size='auto' fit runs without error."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     res = Amica(AmicaConfig(chunk_size="auto", max_iter=3), random_state=42).fit(tiny_data)
     assert res.n_iter == 3
@@ -494,7 +496,7 @@ def test_chunk_size_auto_fit_completes(tiny_data):
 
 def test_chunk_size_auto_matches_fullbatch(tiny_data):
     """chunk_size='auto' on data that fits in RAM gives same W as full-batch."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     kw = dict(max_iter=10, dtype="float64")
     res_full = Amica(AmicaConfig(**kw, chunk_size=None), random_state=42).fit(tiny_data)
@@ -510,7 +512,8 @@ def test_chunk_size_auto_takes_chunked_path_when_forced():
     """chunk_size='auto' uses chunked E-step when psutil reports tiny RAM."""
     psutil = pytest.importorskip("psutil")
     from unittest.mock import MagicMock, patch
-    from amica_python import Amica, AmicaConfig
+
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(0)
     srcs = rng.laplace(size=(4, 2000))
@@ -528,7 +531,7 @@ def test_chunk_size_auto_takes_chunked_path_when_forced():
 
 def test_float32_dtype(tiny_data):
     """Test float32 precision mode."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     config = AmicaConfig(dtype="float32", max_iter=2)
     solver = Amica(config, random_state=42)
@@ -548,7 +551,7 @@ def test_float32_matches_float64_parity():
     worst-case matched-cosine gate as the JAX-vs-NumPy backend parity test.
     Slow because it runs two full 300-iteration fits.
     """
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(3)
     n_src, n_samp = 12, 8000
@@ -558,9 +561,7 @@ def test_float32_matches_float64_parity():
 
     def _fit(dt):
         cfg = AmicaConfig(max_iter=300, num_mix_comps=3, do_newton=True, dtype=dt)
-        return np.asarray(
-            Amica(cfg, random_state=3).fit(data).unmixing_matrix_white_, dtype=float
-        )
+        return np.asarray(Amica(cfg, random_state=3).fit(data).unmixing_matrix_white_, dtype=float)
 
     W64 = _fit("float64")
     W32 = _fit("float32")
@@ -573,7 +574,7 @@ def test_float32_matches_float64_parity():
 
 def test_pcakeep_reduces_components(tiny_data):
     """Test pcakeep reduces the component count."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     config = AmicaConfig(pcakeep=2, max_iter=2)
     solver = Amica(config, random_state=42)
@@ -585,7 +586,7 @@ def test_pcakeep_reduces_components(tiny_data):
 
 def test_fit_transform_and_inverse(tiny_data):
     """Test fit_transform output matches fit().transform() and inverse_transform works."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     config = AmicaConfig(max_iter=2)
     solver1 = Amica(config, random_state=42)
@@ -617,7 +618,7 @@ def test_multimodel_runs(tiny_data):
     the multimodel-amica work — see tests/test_multimodel.py for the full
     parity + recovery suite.)
     """
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     config = AmicaConfig(num_models=2, max_iter=3)
     solver = Amica(config, random_state=42)
@@ -636,7 +637,7 @@ def test_multimodel_runs(tiny_data):
 
 def test_checkpoint_save_load(tiny_data, tmp_path):
     """Test writing checkpoints and reloading."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     config = AmicaConfig(
         outdir=tmp_path / "amica_out",
@@ -665,7 +666,7 @@ def test_checkpoint_save_load(tiny_data, tmp_path):
 
 def test_checkpoint_load_partial(tiny_data, tmp_path):
     """Test loading a directory where some optional files are missing."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     config = AmicaConfig(max_iter=2)
     solver = Amica(config, random_state=42)
@@ -688,7 +689,7 @@ def test_checkpoint_load_partial(tiny_data, tmp_path):
 
 def test_rejection_path(tiny_data):
     """Test outlier rejection path."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     config = AmicaConfig(
         do_reject=True,
@@ -714,7 +715,7 @@ def test_rejection_behavioral():
     - W @ A ≈ I in whitened space (inverse relationship preserved after rejection).
     - Final LL is higher with rejection than without on spike-contaminated data.
     """
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(7)
     n_ch, n_samp = 6, 2000
@@ -752,8 +753,7 @@ def test_rejection_behavioral():
 
     # W @ A ≈ I in whitened space
     WA = res_rej.unmixing_matrix_white_ @ res_rej.mixing_matrix_white_
-    np.testing.assert_allclose(WA, np.eye(n_ch), atol=1e-10,
-                               err_msg="W @ A != I after rejection")
+    np.testing.assert_allclose(WA, np.eye(n_ch), atol=1e-10, err_msg="W @ A != I after rejection")
 
     # Rejection must improve final LL on contaminated data
     ll_rej = res_rej.log_likelihood[-1]
@@ -777,7 +777,7 @@ def test_rejection_behavioral():
 def test_rejection_threshold_rule():
     """_reject_threshold: one-sided lower cut at mean - rejsig*std over the current
     good set, and monotone (a rejected sample is never re-accepted)."""
-    from amica_python.solver import _reject_threshold
+    from py_amica.solver import _reject_threshold
 
     lls = np.zeros(100)
     lls[50] = -10.0  # one clear low outlier
@@ -793,13 +793,14 @@ def test_rejection_threshold_rule():
 
 def test_rejection_no_reacceptance():
     """A sample rejected early is never re-accepted across rounds (Fortran-faithful)."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(3)
     data = rng.laplace(size=(5, 1500))
     data[:, 100] *= 80.0  # one extreme spike → rejected early
-    cfg = AmicaConfig(max_iter=40, do_newton=False, do_reject=True,
-                      rejstart=5, rejint=5, numrej=3, rejsig=3.0)
+    cfg = AmicaConfig(
+        max_iter=40, do_newton=False, do_reject=True, rejstart=5, rejint=5, numrej=3, rejsig=3.0
+    )
     res = Amica(cfg, random_state=0).fit(data)
     assert res.sample_mask_ is not None
     assert not res.sample_mask_[100]  # the spike is rejected and stays rejected
@@ -808,7 +809,7 @@ def test_rejection_no_reacceptance():
 def test_reject_weight_anchor():
     """All-ones weight ≡ unweighted: a do_reject fit that rejects nothing (rejsig
     huge) reproduces a no-rejection fit, and do_reject=False leaves the mask unset."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(1)
     data = rng.laplace(size=(4, 1000))
@@ -817,28 +818,32 @@ def test_reject_weight_anchor():
     assert res_no.sample_mask_ is None and res_no.n_rejected_ == 0
 
     # rejsig huge → threshold far below every LL → nothing rejected → weight all 1s.
-    cfg_rej = AmicaConfig(max_iter=20, do_newton=False, do_reject=True,
-                          rejstart=5, rejint=5, numrej=3, rejsig=1e6)
+    cfg_rej = AmicaConfig(
+        max_iter=20, do_newton=False, do_reject=True, rejstart=5, rejint=5, numrej=3, rejsig=1e6
+    )
     res_rej = Amica(cfg_rej, random_state=0).fit(data)
     assert res_rej.sample_mask_ is not None and res_rej.n_rejected_ == 0
     assert res_rej.sample_mask_.all()
     # The all-ones weight path matches the unweighted path (modulo XLA reassociation).
     np.testing.assert_allclose(
-        res_rej.unmixing_matrix_white_, res_no.unmixing_matrix_white_,
-        rtol=1e-5, atol=1e-7,
+        res_rej.unmixing_matrix_white_,
+        res_no.unmixing_matrix_white_,
+        rtol=1e-5,
+        atol=1e-7,
     )
 
 
 def test_rejection_chunked_matches_fused():
     """Rejection mask + W agree between the full-batch (fused) and chunked paths."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(5)
     data = rng.laplace(size=(5, 1200))
     spikes = [50, 600, 900]
     data[:, spikes] *= 60.0
-    common = dict(max_iter=40, do_newton=False, do_reject=True,
-                  rejstart=8, rejint=6, numrej=2, rejsig=3.0)
+    common = dict(
+        max_iter=40, do_newton=False, do_reject=True, rejstart=8, rejint=6, numrej=2, rejsig=3.0
+    )
 
     res_full = Amica(AmicaConfig(**common, chunk_size=None), random_state=0).fit(data)
     res_chunk = Amica(AmicaConfig(**common, chunk_size=137), random_state=0).fit(data)
@@ -851,14 +856,16 @@ def test_rejection_chunked_matches_fused():
     agree = (res_full.sample_mask_ == res_chunk.sample_mask_).mean()
     assert agree > 0.99, f"chunked/fused masks agree on only {agree:.3%}"
     np.testing.assert_allclose(
-        res_full.unmixing_matrix_white_, res_chunk.unmixing_matrix_white_,
-        rtol=1e-3, atol=1e-5,
+        res_full.unmixing_matrix_white_,
+        res_chunk.unmixing_matrix_white_,
+        rtol=1e-3,
+        atol=1e-5,
     )
 
 
 def test_amica_wrapper(tiny_data):
     """Test the picard-compatible amica() wrapper function."""
-    from amica_python.solver import amica
+    from py_amica.solver import amica
 
     # tiny_data is (n_channels, n_samples) — same as picard convention
     X = tiny_data
@@ -882,7 +889,7 @@ def test_picard_api_parity(tiny_data):
     Does not check numerical agreement (different algorithms).
     """
     picard_mod = pytest.importorskip("picard")
-    from amica_python.solver import amica
+    from py_amica.solver import amica
 
     # MNE passes data[:, sel].T → (n_components, n_samples)
     X = tiny_data  # (4, 200)
@@ -891,9 +898,7 @@ def test_picard_api_parity(tiny_data):
     K_p, W_p, Y_p, n_iter_p = picard_mod.picard(
         X, whiten=False, return_n_iter=True, random_state=42
     )
-    K_a, W_a, Y_a, n_iter_a = amica(
-        X, whiten=False, return_n_iter=True, random_state=42
-    )
+    K_a, W_a, Y_a, n_iter_a = amica(X, whiten=False, return_n_iter=True, random_state=42)
 
     # K: picard returns None when whiten=False
     assert K_p is None
@@ -917,7 +922,7 @@ def test_result_to_mne(tiny_data, monkeypatch):
     import sys
     from unittest.mock import MagicMock
 
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     # Mock MNE so we don't need real raw
     mne_mock = MagicMock()
@@ -949,7 +954,7 @@ def test_checkpoint_resume_bit_exact(tmp_path):
     history which differs between the two runs), do_newton=False (no Newton lrate
     ramp), and do_mean=False (c=0 throughout; c is not restored by init_params).
     """
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(0)
     n_ch, n_samp = 4, 2000
@@ -993,14 +998,16 @@ def test_checkpoint_resume_bit_exact(tmp_path):
     # atol=1e-13 is ~50× tighter than 1e-12 (round-trip tests) and catches any
     # algorithmic divergence (actual observed diff ≈ 6e-15).
     np.testing.assert_allclose(
-        W_100, W_50_50, atol=1e-13,
+        W_100,
+        W_50_50,
+        atol=1e-13,
         err_msg="50+50 checkpoint resume diverged from single 100-iter run",
     )
 
 
 def test_solver_init_paths(tiny_data):
     """Test solver initialization paths with fixed init and initial params."""
-    from amica_python import Amica, AmicaConfig
+    from py_amica import Amica, AmicaConfig
 
     # Test fix_init
     config1 = AmicaConfig(fix_init=True, max_iter=1)
@@ -1036,7 +1043,7 @@ else:
     os.environ.pop("AMICA_NO_JAX", None)
     os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
-from amica_python import Amica, AmicaConfig
+from py_amica import Amica, AmicaConfig
 
 data = np.load(data_path)
 config = AmicaConfig(max_iter=100, num_mix_comps=2, do_newton=False)
@@ -1050,8 +1057,7 @@ def _run_backend(backend, data_path, out_path):
     env = os.environ.copy()
     env.pop("AMICA_NO_JAX", None)
     subprocess.run(
-        [sys.executable, "-c", _BACKEND_PARITY_SCRIPT, backend,
-         str(data_path), str(out_path)],
+        [sys.executable, "-c", _BACKEND_PARITY_SCRIPT, backend, str(data_path), str(out_path)],
         check=True,
         env=env,
         capture_output=True,
@@ -1074,7 +1080,7 @@ def _align_and_compare(W_ref, W_test):
         best = int(np.argmax(row))
         max_sim.append(corr[i, best])
         used.add(best)
-    return np.min(max_sim)   # worst matched component similarity
+    return np.min(max_sim)  # worst matched component similarity
 
 
 @pytest.mark.slow

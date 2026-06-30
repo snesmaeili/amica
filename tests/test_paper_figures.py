@@ -8,8 +8,7 @@ import pytest
 
 matplotlib.use("Agg")
 
-import amica_python.benchmark.viz.paper_figures as paper_figures
-
+import py_amica.benchmark.viz.paper_figures as paper_figures
 
 METHOD_ROWS = [
     ("FastICA", "fastica", "cpu", 80.0, 4.20, 20.6, 14.0),
@@ -218,8 +217,10 @@ def test_comparator_sbatch_scripts_enable_dipole_artifacts():
 def test_kappa_subsampling_aggregate_and_plot(monkeypatch, tmp_path):
     """End-to-end: synthetic dur_*/ JSON tree -> aggregate -> plot."""
     import json
+
     import numpy as np
-    from amica_python.benchmark import aggregate
+
+    from py_amica.benchmark import aggregate
 
     root = tmp_path / "kappa_root"
     durations = [288, 576, 1152, 2880]
@@ -232,13 +233,13 @@ def test_kappa_subsampling_aggregate_and_plot(monkeypatch, tmp_path):
         dur_dir = root / f"dur_{dur}"
         dur_dir.mkdir(parents=True, exist_ok=True)
         n_samples = int(dur * sfreq)
-        kappa_ch = n_samples / (n_channels ** 2)
+        kappa_ch = n_samples / (n_channels**2)
         # MIR grows monotonically with κ; ND% grows monotonically too.
         base_mir = 1.5 + 0.05 * np.log10(kappa_ch + 1)
-        base_nd  = 1.0 + 2.0 * np.log10(kappa_ch + 1)
+        base_nd = 1.0 + 2.0 * np.log10(kappa_ch + 1)
         for sub in subjects:
             jitter_mir = float(rng.normal(0, 0.05))
-            jitter_nd  = float(rng.normal(0, 0.3))
+            jitter_nd = float(rng.normal(0, 0.3))
             n_comp = 64
             doc = {
                 "_data": {
@@ -246,7 +247,7 @@ def test_kappa_subsampling_aggregate_and_plot(monkeypatch, tmp_path):
                     "n_samples": n_samples,
                     "n_channels": n_channels,
                     "kappa_channels": kappa_ch,
-                    "kappa_effective": n_samples / (n_comp ** 2),
+                    "kappa_effective": n_samples / (n_comp**2),
                 },
                 "amica": {
                     "backend": "jax",
@@ -261,18 +262,30 @@ def test_kappa_subsampling_aggregate_and_plot(monkeypatch, tmp_path):
                     "pmi": {"remnant_PMI_percent": 21.0},
                     "dipolarity": {
                         # 64 ICs with RVs spaced so the fraction ≤ 5 grows with κ.
-                        "rho_per_ic": [float(r) for r in rng.uniform(0, max(1.0, base_nd + jitter_nd) * 20.0, size=n_comp)],
+                        "rho_per_ic": [
+                            float(r)
+                            for r in rng.uniform(
+                                0, max(1.0, base_nd + jitter_nd) * 20.0, size=n_comp
+                            )
+                        ],
                     },
                 },
             }
-            (dur_dir / f"benchmark_{sub}_hp1.0hz_jax_gpu.json").write_text(json.dumps(doc), encoding="utf-8")
+            (dur_dir / f"benchmark_{sub}_hp1.0hz_jax_gpu.json").write_text(
+                json.dumps(doc), encoding="utf-8"
+            )
 
     df = aggregate.kappa_subsampling_table(root)
     # 3 subjects × 4 durations
     assert df.shape[0] == 12
     assert set(df.columns) >= {
-        "subject", "duration_sec", "kappa_channels", "kappa_effective",
-        "mir_kbits_s", "nd_5_percent", "nd_10_percent",
+        "subject",
+        "duration_sec",
+        "kappa_channels",
+        "kappa_effective",
+        "mir_kbits_s",
+        "nd_5_percent",
+        "nd_10_percent",
     }
     # κ_channels is monotonically increasing with duration_sec.
     for sub in subjects:

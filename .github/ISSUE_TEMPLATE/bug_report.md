@@ -23,7 +23,7 @@ A clear and concise description of what you expected to happen.
 
 - OS: [e.g. Ubuntu 22.04, macOS 13]
 - Python version [e.g. 3.11]
-- amica-python version [e.g. 0.0.1]
+- pyamica version [e.g. 0.0.1]
 - JAX version (if applicable) [e.g. 0.4.26]
 
 **Additional context**

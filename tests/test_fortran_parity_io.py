@@ -1,11 +1,12 @@
 """Round-trip tests for the Fortran AMICA I/O (no binary needed)."""
+
 import os
 
 os.environ.setdefault("AMICA_NO_JAX", "1")
 import numpy as np
 import pytest
 
-from amica_python.benchmark.parity import fortran_io as fio
+from py_amica.benchmark.parity import fortran_io as fio
 
 
 def test_fdt_roundtrip(tmp_path):
@@ -16,9 +17,16 @@ def test_fdt_roundtrip(tmp_path):
 
 
 def test_param_written(tmp_path):
-    p = fio.write_param(tmp_path / "x.param", files="/data/d.fdt", outdir="/out/o/",
-                        n_channels=6, n_samples=1000, num_mix_comps=3, do_newton=0,
-                        max_iter=42)
+    p = fio.write_param(
+        tmp_path / "x.param",
+        files="/data/d.fdt",
+        outdir="/out/o/",
+        n_channels=6,
+        n_samples=1000,
+        num_mix_comps=3,
+        do_newton=0,
+        max_iter=42,
+    )
     txt = p.read_text()
     assert "data_dim 6" in txt and "field_dim 1000" in txt
     assert "num_mix_comps 3" in txt and "do_newton 0" in txt and "max_iter 42" in txt
@@ -76,6 +84,7 @@ def test_llt_roundtrip_and_rejected_set(tmp_path):
 if __name__ == "__main__":
     import tempfile
     from pathlib import Path
+
     d = Path(tempfile.mkdtemp())
     test_fdt_roundtrip(d)
     (d / "p").mkdir()

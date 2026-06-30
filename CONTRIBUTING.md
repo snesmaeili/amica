@@ -1,14 +1,14 @@
-# Contributing to amica-python
+# Contributing to pyamica
 
-Thank you for your interest in contributing to amica-python! This document provides guidelines for contributing to this project.
+Thank you for your interest in contributing to pyamica! This document provides guidelines for contributing to this project.
 
 ## Getting Started
 
 1. Fork the repository on GitHub
 1. Clone your fork locally:
    ```bash
-   git clone https://github.com/<your-username>/amica-python.git
-   cd amica-python
+   git clone https://github.com/<your-username>/pyamica.git
+   cd pyamica
    ```
 1. Create a virtual environment and install in development mode:
    ```bash
@@ -78,6 +78,7 @@ Install nox via `pip install nox`.
 ### Bug Reports
 
 Please open an issue on GitHub using the **Bug report template**. Be sure to include:
+
 - A minimal reproducible example
 - Expected vs. actual behavior
 - Your environment (Python version, OS, JAX version if applicable)
@@ -85,6 +86,7 @@ Please open an issue on GitHub using the **Bug report template**. Be sure to inc
 ### Feature Requests
 
 Please open an issue on GitHub using the **Feature request template**, describing:
+
 - The use case / motivation
 - Proposed API or behavior
 - Any relevant references (papers, other implementations)
@@ -92,14 +94,15 @@ Please open an issue on GitHub using the **Feature request template**, describin
 ### Code Contributions
 
 1. Ensure your changes pass all existing tests
-2. Add tests for new functionality
-3. Run `pre-commit` to ensure code style compliance
-4. Update docstrings and documentation as needed
-5. Submit a pull request against the `main` branch using the provided **Pull Request template**
+1. Add tests for new functionality
+1. Run `pre-commit` to ensure code style compliance
+1. Update docstrings and documentation as needed
+1. Submit a pull request against the `main` branch using the provided **Pull Request template**
 
 ### Validation and Benchmarks
 
 We especially welcome contributions that:
+
 - Test AMICA against MATLAB reference outputs on new configurations
 - Benchmark on new EEG/MEG datasets
 - Compare with other ICA methods (Infomax, FastICA, Picard)
@@ -111,4 +114,6 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 ## Questions?
 
 Open an issue or contact Sina Esmaeili at sina.esmaeili@umontreal.ca.
+
+```
 ```

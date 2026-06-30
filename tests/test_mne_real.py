@@ -15,6 +15,7 @@ def mne():
     """Skip entire module if MNE-Python is not installed."""
     try:
         import mne as _mne
+
         return _mne
     except ImportError:
         pytest.skip("MNE-Python not installed")
@@ -32,7 +33,7 @@ def _make_raw(mne, n_ch=4, n_samp=1000, seed=42):
 
 def test_fit_ica_on_raw(mne):
     """fit_ica produces a working MNE ICA object; get_sources() works."""
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     raw = _make_raw(mne, n_ch=8, n_samp=2000)
     ica = fit_ica(
@@ -52,12 +53,15 @@ def test_fit_ica_on_raw(mne):
 
 def test_direct_vs_shim_sources_correlated(mne):
     """Two identical fit_ica calls produce highly correlated sources."""
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     raw = _make_raw(mne, n_ch=6, n_samp=3000)
     params = dict(
-        n_components=3, max_iter=30, num_mix=2,
-        random_state=42, fit_params={"do_newton": False},
+        n_components=3,
+        max_iter=30,
+        num_mix=2,
+        random_state=42,
+        fit_params={"do_newton": False},
     )
     ica_a = fit_ica(raw.copy(), **params)
     ica_b = fit_ica(raw.copy(), **params)
@@ -73,17 +77,18 @@ def test_direct_vs_shim_sources_correlated(mne):
 def test_multi_model_now_supported(mne):
     """fit_ica() with num_models > 1 is now supported (returns a multi-model fit);
     the detailed exposure is checked in test_fit_ica_multimodel_mne_exposure."""
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     raw = _make_raw(mne, n_ch=6, n_samp=3000)
-    ica = fit_ica(raw, n_components=4, max_iter=20,
-                  fit_params={"num_models": 2, "do_newton": False})
+    ica = fit_ica(
+        raw, n_components=4, max_iter=20, fit_params={"num_models": 2, "do_newton": False}
+    )
     assert np.asarray(ica.amica_result_.unmixing_matrix_white_).shape[0] == 2
 
 
 def test_amica_result_attached(mne):
     """fit_ica() attaches amica_result_ to the ICA object."""
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     raw = _make_raw(mne)
     ica = fit_ica(raw, n_components=2, max_iter=10, fit_params={"do_newton": False})
@@ -95,7 +100,7 @@ def test_fit_ica_sample_rejection(mne):
     """fit_ica(fit_params={do_reject:True}) runs AMICA likelihood-based sample
     rejection and exposes the mask on ica.amica_result_; planted spikes are flagged
     (the mask indexes the fit-input samples)."""
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     raw = _make_raw(mne, n_ch=6, n_samp=3000)
     data = raw.get_data()
@@ -105,9 +110,17 @@ def test_fit_ica_sample_rejection(mne):
     raw_c = mne.io.RawArray(data, raw.info)
 
     ica = fit_ica(
-        raw_c, n_components=4, max_iter=40,
-        fit_params={"do_reject": True, "rejstart": 8, "rejint": 5,
-                    "numrej": 3, "rejsig": 3.0, "do_newton": False},
+        raw_c,
+        n_components=4,
+        max_iter=40,
+        fit_params={
+            "do_reject": True,
+            "rejstart": 8,
+            "rejint": 5,
+            "numrej": 3,
+            "rejsig": 3.0,
+            "do_newton": False,
+        },
     )
     mask = ica.amica_result_.sample_mask_
     assert mask is not None and mask.shape == (raw.n_times,) and mask.dtype == bool
@@ -118,7 +131,7 @@ def test_fit_ica_sample_rejection(mne):
 def test_fit_ica_multimodel_rejection(mne):
     """fit_ica(num_models>1, do_reject) runs M>1 likelihood rejection through MNE:
     one global mask is exposed on amica_result_ and the primary ICA still works."""
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     raw = _make_raw(mne, n_ch=6, n_samp=3000)
     data = raw.get_data()
@@ -128,9 +141,18 @@ def test_fit_ica_multimodel_rejection(mne):
     raw_c = mne.io.RawArray(data, raw.info)
 
     ica = fit_ica(
-        raw_c, n_components=4, max_iter=40,
-        fit_params={"num_models": 2, "do_reject": True, "rejstart": 8,
-                    "rejint": 5, "numrej": 2, "rejsig": 3.0, "do_newton": False},
+        raw_c,
+        n_components=4,
+        max_iter=40,
+        fit_params={
+            "num_models": 2,
+            "do_reject": True,
+            "rejstart": 8,
+            "rejint": 5,
+            "numrej": 2,
+            "rejsig": 3.0,
+            "do_newton": False,
+        },
     )
     mask = ica.amica_result_.sample_mask_
     assert mask is not None and mask.shape == (raw.n_times,)
@@ -142,13 +164,14 @@ def test_fit_ica_multimodel_rejection(mne):
 
 def test_apply_preserves_shape(mne):
     """ica.apply() preserves data shape; full-rank round-trip is machine-precise."""
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     rng = np.random.RandomState(42)
     n_ch, n_samp = 4, 1000
     info = mne.create_info(
         ch_names=[f"EEG{i:03d}" for i in range(n_ch)],
-        sfreq=256, ch_types="eeg",
+        sfreq=256,
+        ch_types="eeg",
     )
     data = rng.randn(n_ch, n_samp) * 1e-6
     raw = mne.io.RawArray(data, info)
@@ -157,29 +180,30 @@ def test_apply_preserves_shape(mne):
     assert ica.apply(raw.copy()).get_data().shape == data.shape
 
     recon = ica.apply(raw.copy(), exclude=[]).get_data()
-    frob_rel = np.linalg.norm(data - recon, "fro") / np.linalg.norm(data, "fro")
-    assert frob_rel < 1e-12, f"MNE apply() round-trip Frobenius residual: {frob_rel:.2e}"
+    fro_norm_rel = np.linalg.norm(data - recon, "fro") / np.linalg.norm(data, "fro")
+    assert fro_norm_rel < 1e-12, f"MNE apply() round-trip Frobenius residual: {fro_norm_rel:.2e}"
 
 
 def test_apply_after_channel_reorder(mne):
     """apply() matches components to channels by name, so a reordered Raw still
     reconstructs to machine precision (channel-reordering conformance)."""
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     raw = _make_raw(mne, n_ch=5, n_samp=1500)
     ica = fit_ica(raw, n_components=5, max_iter=10, fit_params={"do_newton": False})
 
     reordered = raw.copy().reorder_channels(list(reversed(raw.ch_names)))
     out = ica.apply(reordered, exclude=[]).copy().reorder_channels(raw.ch_names)
-    frob_rel = (np.linalg.norm(raw.get_data() - out.get_data(), "fro")
-                / np.linalg.norm(raw.get_data(), "fro"))
-    assert frob_rel < 1e-9, f"reordered apply round-trip residual: {frob_rel:.2e}"
+    fro_norm_rel = np.linalg.norm(raw.get_data() - out.get_data(), "fro") / np.linalg.norm(
+        raw.get_data(), "fro"
+    )
+    assert fro_norm_rel < 1e-9, f"reordered apply round-trip residual: {fro_norm_rel:.2e}"
 
 
 def test_fit_rank_deficient_input(mne):
     """A rank-deficient Raw (one duplicated channel) fits at the reduced rank
     without producing non-finite sources (rank-deficiency conformance)."""
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     rng = np.random.RandomState(0)
     base = rng.randn(4, 2000) * 1e-6
@@ -207,7 +231,7 @@ def test_iclabel_interop(mne):
         from mne_icalabel import label_components
     except ImportError:
         pytest.skip("mne-icalabel not installed")
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     names = ["Fp1", "Fp2", "F3", "F4", "C3", "C4", "P3", "P4"]
     rng = np.random.RandomState(7)
@@ -224,7 +248,7 @@ def test_iclabel_interop(mne):
 
 def test_fit_ica_on_epochs(mne):
     """fit_ica accepts an Epochs object and decomposes it (Epochs conformance)."""
-    from amica_python import fit_ica
+    from py_amica import fit_ica
 
     raw = _make_raw(mne, n_ch=6, n_samp=6000)
     events = mne.make_fixed_length_events(raw, duration=1.0)
@@ -240,11 +264,12 @@ def test_fit_ica_multimodel_mne_exposure(mne):
     """fit_ica(num_models>1) returns the primary (highest-weight) model's ICA with
     the full multi-model AmicaResult attached, and get_model_ica materialises any
     model so standard MNE ops keep working (multi-model MNE conformance)."""
-    from amica_python import fit_ica, get_model_ica
+    from py_amica import fit_ica, get_model_ica
 
     raw = _make_raw(mne, n_ch=8, n_samp=4000)
-    ica = fit_ica(raw, n_components=6, max_iter=40,
-                  fit_params={"num_models": 2, "do_newton": False})
+    ica = fit_ica(
+        raw, n_components=6, max_iter=40, fit_params={"num_models": 2, "do_newton": False}
+    )
 
     # Full multi-model result is attached.
     W = np.asarray(ica.amica_result_.unmixing_matrix_white_)

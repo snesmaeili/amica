@@ -1,6 +1,6 @@
 """Example 01 — AMICA via MNE-Python (the ``fit_ica`` wrapper).
 
-Load EEG, filter it, and fit AMICA through :func:`~amica_python.fit_ica`, which
+Load EEG, filter it, and fit AMICA through :func:`~py_amica.fit_ica`, which
 returns a standard :class:`mne.preprocessing.ICA`. Every MNE method then works
 unchanged: ``plot_components``, ``plot_sources``, ``get_sources``, ``apply`` ...
 
@@ -11,11 +11,12 @@ Run::
 This uses the MNE ``sample`` dataset (downloaded once on first run). To run on
 **your own data**, replace ``load_raw()`` with one line — see the comments below.
 """
+
 from __future__ import annotations
 
 import mne
 
-from amica_python import fit_ica
+from py_amica import fit_ica
 
 
 def load_raw():
@@ -28,18 +29,17 @@ def load_raw():
         raw = mne.io.read_raw_brainvision("your_data.vhdr", preload=True)
     """
     sample = mne.datasets.sample.data_path()
-    raw = mne.io.read_raw_fif(
-        sample / "MEG" / "sample" / "sample_audvis_raw.fif", preload=True
-    )
-    raw.pick("eeg")          # run ICA on EEG channels
-    raw.filter(1.0, 40.0)    # a >=1 Hz high-pass is recommended before ICA
+    raw = mne.io.read_raw_fif(sample / "MEG" / "sample" / "sample_audvis_raw.fif", preload=True)
+    raw.pick("eeg")  # run ICA on EEG channels
+    raw.filter(1.0, 40.0)  # a >=1 Hz high-pass is recommended before ICA
     return raw
 
 
 def main() -> None:
     raw = load_raw()
-    print(f"raw: {len(raw.ch_names)} EEG channels, "
-          f"{raw.n_times} samples @ {raw.info['sfreq']:.0f} Hz")
+    print(
+        f"raw: {len(raw.ch_names)} EEG channels, {raw.n_times} samples @ {raw.info['sfreq']:.0f} Hz"
+    )
 
     # Returns a standard mne.preprocessing.ICA fitted with AMICA.
     ica = fit_ica(raw, n_components=15, max_iter=500, random_state=42)

@@ -1,4 +1,4 @@
-# amica-python
+# pyamica
 
 ```{toctree}
 ---
