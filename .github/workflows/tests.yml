@@ -13,17 +13,25 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     # JAX-GPU tests require a self-hosted GPU runner and are run locally only.
-    # JAX-CPU runs on ubuntu-latest (Python 3.12 only to limit CI minutes).
+    # JAX-CPU runs on all OSes (Python 3.12 only to limit CI minutes).
     # GPU tests: pytest tests/ --backend=gpu  (requires CUDA, run locally)
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
         backend: ["numpy"]
         include:
-          - python-version: "3.12"
+          - os: ubuntu-latest
+            python-version: "3.12"
+            backend: "jax-cpu"
+          - os: macos-latest
+            python-version: "3.12"
+            backend: "jax-cpu"
+          - os: windows-latest
+            python-version: "3.12"
             backend: "jax-cpu"
 
     steps:
