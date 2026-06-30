@@ -17,7 +17,7 @@ Design: this module reuses the single-model machinery wherever possible —
 over the model axis), and a v-weighted copy of the per-component accumulator from
 ``accumulators._chunk_stats_one_component`` (the only change is ``u = v_h * resp``
 instead of ``u = resp``). Every accumulator is linear in ``u``, so this single
-factor reproduces pyamica's joint responsibility ``u = v * z`` exactly.
+factor reproduces amica's joint responsibility ``u = v * z`` exactly.
 
 **M=1 reduction (the parity guarantee):** with one model, ``v ≡ 1`` and
 ``Nv = n_total``; the v-weighted means become ordinary means, the per-model

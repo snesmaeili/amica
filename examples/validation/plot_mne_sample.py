@@ -49,7 +49,7 @@ OUT_DIR = Path(__file__).resolve().parent / "results"
 
 def fit_amica(raw, *, n_components: int, max_iter: int, random_state: int):
     """Fit PyAMICA through the standard MNE-compatible entry point."""
-    from py_amica import fit_ica
+    from amica import fit_ica
 
     start = time.perf_counter()
 

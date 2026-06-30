@@ -48,7 +48,7 @@ Find troubleshooting notes for installation, JAX, MNE integration, and validatio
 ## Minimal Example
 
 ```python
-from py_amica import Amica, AmicaConfig
+from amica import Amica, AmicaConfig
 
 config = AmicaConfig(max_iter=2000, num_mix_comps=3)
 model = Amica(config, random_state=42)
@@ -82,5 +82,5 @@ contributing
 ## Project Links
 
 - [GitHub repository](https://github.com/BabaSanfour/PyAMICA)
-- [PyPI package](https://pypi.org/project/pyamica/)
+- [PyPI package](https://pypi.org/project/amica/)
 - [Issue tracker](https://github.com/BabaSanfour/PyAMICA/issues)

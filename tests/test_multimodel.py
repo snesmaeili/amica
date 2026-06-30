@@ -1,6 +1,6 @@
 """Tests for multi-model AMICA (num_models > 1).
 
-Stage 1 (this file, first block): the core math in ``py_amica.multimodel``
+Stage 1 (this file, first block): the core math in ``amica.multimodel``
 reduces EXACTLY to the single-model accumulator at M=1, and its LL / gamma match
 the existing (previously-unused) scaffolding. Later stages add solver-level
 parity and the Hsu-style synthetic recovery experiment.
@@ -11,11 +11,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from py_amica import multimodel as mm
-from py_amica.accumulators import compute_chunk_stats
-from py_amica.backend import jax, jnp
-from py_amica.likelihood import compute_multimodel_loglikelihood
-from py_amica.updates import update_model_weights
+from amica import multimodel as mm
+from amica.accumulators import compute_chunk_stats
+from amica.backend import jax, jnp
+from amica.likelihood import compute_multimodel_loglikelihood
+from amica.updates import update_model_weights
 
 ATOL = 1e-11
 
@@ -154,7 +154,7 @@ def test_mm_gm_equals_update_model_weights():
 # Stage 3 — M=1 parity: the multimodel step reduces EXACTLY to the fused step
 # ---------------------------------------------------------------------------
 
-from py_amica.solver import _amica_step_fused, _amica_step_multimodel  # noqa: E402
+from amica.solver import _amica_step_fused, _amica_step_multimodel  # noqa: E402
 
 _NAMES = ["W", "A", "c", "alpha", "mu", "beta", "rho", "gm", "ll", "is_good", "newton_used"]
 
@@ -217,7 +217,7 @@ def test_M1_step_matches_fused(iteration, newt_start):
 # Stage 4 — chunked multimodel == full-batch multimodel
 # ---------------------------------------------------------------------------
 
-from py_amica.solver import _amica_step_multimodel_chunked  # noqa: E402
+from amica.solver import _amica_step_multimodel_chunked  # noqa: E402
 
 
 def test_mm_chunked_matches_fullbatch_step():
@@ -314,7 +314,7 @@ def test_multimodel_recovers_two_regimes():
     multi-model AMICA should match supervised per-segment ICA on non-stationary
     data, whereas a single model cannot.
     """
-    from py_amica import Amica, AmicaConfig
+    from amica import Amica, AmicaConfig
 
     rng = np.random.default_rng(20)
     n = 4
@@ -388,7 +388,7 @@ def test_multimodel_rejection():
     """M>1 likelihood sample rejection: planted spikes are flagged in sample_mask_
     (one global mask across models, thresholding the mixture LL), and do_reject=False
     leaves the mask unset (the multimodel anchor)."""
-    from py_amica import Amica, AmicaConfig
+    from amica import Amica, AmicaConfig
 
     rng = np.random.RandomState(0)
     data = rng.laplace(size=(5, 1500))

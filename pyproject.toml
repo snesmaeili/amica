@@ -3,7 +3,7 @@ requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyamica"
+name = "amica"
 version = "0.0.1"
 description = "Native Python implementation of AMICA for MNE-Python and scientific EEG workflows."
 readme = { file = "README.md", content-type = "text/markdown" }
@@ -84,7 +84,7 @@ docs = [
 ]
 
 dev = [
-  "pyamica[test,docs]",
+  "amica[test,docs]",
   "pre-commit>=3.0",
   "ruff>=0.9",
   "towncrier>=23.0",
@@ -100,18 +100,18 @@ release = [
 ]
 
 all = [
-  "pyamica[jax,mne,icalabel,viz,test,docs]",
+  "amica[jax,mne,icalabel,viz,test,docs]",
 ]
 
 [project.urls]
-Homepage = "https://github.com/BabaSanfour/PyAMICA"
-Documentation = "https://babasanfour.github.io/PyAMICA/"
-Repository = "https://github.com/BabaSanfour/PyAMICA.git"
-Issues = "https://github.com/BabaSanfour/PyAMICA/issues"
-Changelog = "https://github.com/BabaSanfour/PyAMICA/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/snesmaeili/amica"
+Documentation = "https://snesmaeili.github.io/amica/"
+Repository = "https://github.com/snesmaeili/amica.git"
+Issues = "https://github.com/snesmaeili/amica/issues"
+Changelog = "https://github.com/snesmaeili/amica/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
-include = ["py_amica*"]
+include = ["amica*"]
 
 [tool.ruff]
 line-length = 100
@@ -136,7 +136,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["py_amica"]
+known-first-party = ["amica"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
@@ -170,17 +170,17 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["py_amica"]
+source = ["amica"]
 omit = [
-  "py_amica/binary.py",
+  "amica/binary.py",
 ]
 
 [tool.towncrier]
-package = "py_amica"
+package = "amica"
 filename = "CHANGELOG.md"
 directory = "changes"
-title_format = "## [{version}](https://github.com/snesmaeili/PyAMICA/releases/tag/v{version}) ({project_date})"
-issue_format = "[#{issue}](https://github.com/snesmaeili/PyAMICA/pull/{issue})"
+title_format = "## [{version}](https://github.com/snesmaeili/amica/releases/tag/v{version}) ({project_date})"
+issue_format = "[#{issue}](https://github.com/snesmaeili/amica/pull/{issue})"
 template = "changes/template.md"
 
 [[tool.towncrier.type]]

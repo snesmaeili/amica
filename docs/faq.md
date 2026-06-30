@@ -13,7 +13,7 @@ No.
 PyAMICA runs out of the box using the NumPy backend. Installing the `jax` extra enables hardware acceleration on supported systems.
 
 ```bash
-pip install "pyamica[jax]"
+pip install "amica[jax]"
 ```
 
 ______________________________________________________________________

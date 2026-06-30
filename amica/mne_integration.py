@@ -4,7 +4,7 @@ Provides helper functions to use AMICA with MNE-Python's ICA workflow.
 
 Usage
 -----
->>> from py_amica import fit_ica
+>>> from amica import fit_ica
 >>> ica = fit_ica(raw, n_components=20, max_iter=2000)
 >>> ica.plot_components()
 >>> ica.apply(raw)
@@ -164,7 +164,7 @@ def fit_ica(
     decim : int | None
         Decimation factor.
     fit_params : dict | None
-        Additional parameters forwarded to :class:`~py_amica.config.AmicaConfig`,
+        Additional parameters forwarded to :class:`~amica.config.AmicaConfig`,
         e.g. ``dict(do_reject=True, rejsig=3.0)`` to enable AMICA's per-sample
         likelihood rejection (see Notes).
     verbose : bool | None
@@ -196,7 +196,7 @@ def fit_ica(
 
     Examples
     --------
-    >>> from py_amica import fit_ica
+    >>> from amica import fit_ica
     >>> ica = fit_ica(raw, n_components=20)
     >>> ica.plot_sources(raw)
     >>> ica.apply(raw)
@@ -208,12 +208,12 @@ def fit_ica(
             "MNE-Python is required for fit_ica(). Install with: pip install mne"
         ) from err
 
-    from py_amica import Amica, AmicaConfig
+    from amica import Amica, AmicaConfig
 
     # Multi-model (num_models>1) is supported: fit_ica returns the highest-weight
     # model's decomposition as the primary mne.preprocessing.ICA, with the full
     # multi-model AmicaResult attached (ica.amica_result_) and any model
-    # retrievable via py_amica.get_model_ica(ica, h).
+    # retrievable via amica.get_model_ica(ica, h).
     _fit_params = fit_params or {}
 
     # ================================================================

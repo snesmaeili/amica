@@ -81,7 +81,7 @@ PyAMICA provides two primary interfaces.
 For EEG analysis with MNE, use:
 
 ```python
-from py_amica import fit_ica
+from amica import fit_ica
 ```
 
 This returns a standard `mne.preprocessing.ICA` object that integrates directly with existing MNE workflows.
@@ -91,7 +91,7 @@ This returns a standard `mne.preprocessing.ICA` object that integrates directly 
 For NumPy arrays or custom pipelines, use:
 
 ```python
-from py_amica import Amica, AmicaConfig
+from amica import Amica, AmicaConfig
 ```
 
 This provides direct access to the AMICA algorithm and all configuration options.

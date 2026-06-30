@@ -1,10 +1,10 @@
-"""Tests for py_amica.updates module."""
+"""Tests for amica.updates module."""
 
 from __future__ import annotations
 
 import numpy as np
 
-from py_amica import updates
+from amica import updates
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,7 +27,7 @@ def _make_mock_inputs(n_comp=4, n_mix=3, n_samp=1000):
 
 
 def test_compute_newton_terms():
-    from py_amica.backend import jnp
+    from amica.backend import jnp
 
     n_comp, n_mix, n_samp = 4, 3, 500
     y, alpha, mu, beta, rho = _make_mock_inputs(n_comp, n_mix, n_samp)
@@ -43,7 +43,7 @@ def test_compute_newton_terms():
 
 
 def test_update_alpha():
-    from py_amica.backend import jnp
+    from amica.backend import jnp
 
     rng = np.random.RandomState(42)
     resp = rng.rand(3, 100)
@@ -57,7 +57,7 @@ def test_update_alpha():
 
 
 def test_update_mu_beta_rho():
-    from py_amica.backend import jnp
+    from amica.backend import jnp
 
     n_comp, n_mix, n_samp = 4, 3, 500
     y, alpha, mu, beta, rho = _make_mock_inputs(n_comp, n_mix, n_samp)
@@ -68,7 +68,7 @@ def test_update_mu_beta_rho():
     beta_i = jnp.asarray(beta[:, 0])
     rho_i = jnp.asarray(rho[:, 0])
 
-    from py_amica.pdf import compute_responsibilities
+    from amica.pdf import compute_responsibilities
 
     resp = compute_responsibilities(y_i, alpha_i, mu_i, beta_i, rho_i)
 
@@ -90,7 +90,7 @@ def test_update_mu_beta_rho():
 
 
 def test_natural_gradient_and_newton_correction():
-    from py_amica.backend import jnp
+    from amica.backend import jnp
 
     rng = np.random.RandomState(42)
     n_comp, n_samp = 4, 1000
@@ -116,8 +116,8 @@ def test_natural_gradient_and_newton_correction():
 
 
 def test_update_all_pdf_params():
-    from py_amica.backend import jnp
-    from py_amica.config import AmicaConfig
+    from amica.backend import jnp
+    from amica.config import AmicaConfig
 
     n_comp, n_mix, n_samp = 4, 3, 500
     y, alpha, mu, beta, rho = _make_mock_inputs(n_comp, n_mix, n_samp)
@@ -139,7 +139,7 @@ def test_update_all_pdf_params():
 
 
 def test_update_model_weights():
-    from py_amica.backend import jnp
+    from amica.backend import jnp
 
     rng = np.random.RandomState(42)
     model_logliks = rng.randn(2, 500)
@@ -156,7 +156,7 @@ def test_update_model_weights():
 
 
 def test_apply_updates_from_stats():
-    from py_amica.backend import jnp
+    from amica.backend import jnp
 
     n_comp, n_mix = 4, 3
     rng = np.random.RandomState(42)

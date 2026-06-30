@@ -1,4 +1,4 @@
-"""Tests for py_amica.likelihood module."""
+"""Tests for amica.likelihood module."""
 
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ def _make_params(n_comp=4, n_mix=3, n_samp=1000, rng=None):
 
 
 def test_compute_log_det_W():
-    from py_amica.backend import jnp
-    from py_amica.likelihood import compute_log_det_W
+    from amica.backend import jnp
+    from amica.likelihood import compute_log_det_W
 
     # Identity
     W_id = jnp.eye(4)
@@ -53,8 +53,8 @@ def test_compute_log_det_W():
 
 
 def test_model_and_average_loglikelihood():
-    from py_amica.backend import jnp
-    from py_amica.likelihood import (
+    from amica.backend import jnp
+    from amica.likelihood import (
         compute_average_loglikelihood,
         compute_log_det_W,
         compute_model_loglikelihood,
@@ -86,8 +86,8 @@ def test_model_and_average_loglikelihood():
 
 
 def test_total_loglikelihood_and_chunks():
-    from py_amica.backend import jnp
-    from py_amica.likelihood import compute_loglik_chunk, compute_total_loglikelihood
+    from amica.backend import jnp
+    from amica.likelihood import compute_loglik_chunk, compute_total_loglikelihood
 
     rng = np.random.RandomState(10)
     n_comp, n_samp = 4, 10_000
@@ -140,8 +140,8 @@ def test_total_loglikelihood_and_chunks():
 
 
 def test_multimodel_loglikelihood():
-    from py_amica.backend import jnp
-    from py_amica.likelihood import compute_multimodel_loglikelihood
+    from amica.backend import jnp
+    from amica.likelihood import compute_multimodel_loglikelihood
 
     n_models = 2
     n_comp = 4

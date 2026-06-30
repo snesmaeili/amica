@@ -1,4 +1,4 @@
-"""Tests for py_amica.config module."""
+"""Tests for amica.config module."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from py_amica.config import AmicaConfig
+from amica.config import AmicaConfig
 
 
 def test_default_config_valid():
@@ -56,7 +56,7 @@ def test_outdir_path_conversion():
 def test_invalid_estep():
     import pytest
 
-    from py_amica import AmicaConfig
+    from amica import AmicaConfig
 
     with pytest.raises(ValueError, match="estep must be 'auto', 'fused', or 'classic'"):
         AmicaConfig(estep="invalid")

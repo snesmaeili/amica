@@ -1,17 +1,17 @@
-# PyAMICA
+# amica
 
-[![CI](https://img.shields.io/github/actions/workflow/status/BabaSanfour/PyAMICA/ci.yml?branch=main&label=CI)](https://github.com/BabaSanfour/PyAMICA/actions/workflows/ci.yml)
-[![Docs](https://img.shields.io/github/actions/workflow/status/BabaSanfour/PyAMICA/docs.yml?branch=main&label=docs)](https://babasanfour.github.io/PyAMICA/)
-[![Codecov](https://img.shields.io/codecov/c/github/BabaSanfour/PyAMICA)](https://codecov.io/gh/BabaSanfour/PyAMICA)
-[![PyPI - Version](https://img.shields.io/pypi/v/pyamica.svg)](https://pypi.org/project/pyamica/)
-[![Python Versions](https://img.shields.io/pypi/pyversions/pyamica.svg)](https://pypi.org/project/pyamica/)
+[![CI](https://img.shields.io/github/actions/workflow/status/snesmaeili/amica/ci.yml?branch=main&label=CI)](https://github.com/snesmaeili/amica/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/github/actions/workflow/status/snesmaeili/amica/docs.yml?branch=main&label=docs)](https://snesmaeili.github.io/amica/)
+[![Codecov](https://img.shields.io/codecov/c/github/snesmaeili/amica)](https://codecov.io/gh/snesmaeili/amica)
+[![PyPI - Version](https://img.shields.io/pypi/v/amica.svg)](https://pypi.org/project/amica/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/amica.svg)](https://pypi.org/project/amica/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 
-> **PyAMICA** is a native Python implementation of **AMICA (Adaptive Mixture Independent Component Analysis)**, one of the highest-performing ICA algorithms for EEG source separation.
+> **amica** is a native Python implementation of **AMICA (Adaptive Mixture Independent Component Analysis)**, one of the highest-performing ICA algorithms for EEG source separation.
 
-Originally distributed as a closed-source Fortran executable from UCSD, PyAMICA provides an open, extensible implementation with optional **JAX acceleration**, seamless **MNE-Python integration**, and a modern Python API for reproducible neuroimaging workflows.
+Originally distributed as a closed-source Fortran executable from UCSD, amica provides an open, extensible implementation with optional **JAX acceleration**, seamless **MNE-Python integration**, and a modern Python API for reproducible neuroimaging workflows.
 
-> **Status:** PyAMICA is under active development and validation. The implementation already achieves numerical agreement with the original MATLAB AMICA across a broad range of configurations, while documentation and benchmarking continue to expand.
+> **Status:** amica is under active development and validation. The implementation already achieves numerical agreement with the original MATLAB AMICA across a broad range of configurations, while documentation and benchmarking continue to expand.
 
 ______________________________________________________________________
 
@@ -33,8 +33,8 @@ ______________________________________________________________________
 ## Using pip
 
 ```bash
-git clone https://github.com/BabaSanfour/PyAMICA.git
-cd PyAMICA
+git clone https://github.com/snesmaeili/amica.git
+cd amica
 pip install -e .
 ```
 
@@ -50,8 +50,8 @@ pip install -e ".[all]"
 ## Using uv
 
 ```bash
-git clone https://github.com/BabaSanfour/PyAMICA.git
-cd PyAMICA
+git clone https://github.com/snesmaeili/amica.git
+cd amica
 
 uv venv
 source .venv/bin/activate
@@ -70,7 +70,7 @@ ______________________________________________________________________
 # Quick Start
 
 ```python
-from py_amica import Amica, AmicaConfig
+from amica import Amica, AmicaConfig
 
 config = AmicaConfig(
     max_iter=2000,
@@ -87,7 +87,7 @@ sources = model.transform(data)
 For MNE-Python:
 
 ```python
-from py_amica import fit_ica
+from amica import fit_ica
 
 ica = fit_ica(raw)
 
@@ -113,13 +113,13 @@ ______________________________________________________________________
 
 Full documentation, API reference, validation experiments, and tutorials are available at
 
-**https://babasanfour.github.io/PyAMICA/**
+**https://snesmaeili.github.io/amica/**
 
 ______________________________________________________________________
 
 # Validation
 
-PyAMICA has been validated against the original MATLAB AMICA implementation and achieves numerical agreement across a wide range of configurations.
+amica has been validated against the original MATLAB AMICA implementation and achieves numerical agreement across a wide range of configurations.
 
 The documentation contains:
 
@@ -140,7 +140,7 @@ ______________________________________________________________________
 
 # Citation
 
-If PyAMICA contributes to your research, please cite the original AMICA publications.
+If amica contributes to your research, please cite the original AMICA publications.
 
 Citation metadata is available in
 [CITATION.cff](CITATION.cff).
@@ -149,4 +149,4 @@ ______________________________________________________________________
 
 # License
 
-PyAMICA is distributed under the terms of the BSD 3-Clause License.
+amica is distributed under the terms of the BSD 3-Clause License.

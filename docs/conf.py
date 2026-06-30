@@ -29,7 +29,7 @@ _today = date.today()
 copyright = f"2024-{_today.year}, {author}. Last updated on {_today.isoformat()}"
 
 try:
-    version = get_version("pyamica")
+    version = get_version("amica")
 except PackageNotFoundError:
     version = "0.1.0"
 
@@ -141,9 +141,9 @@ copybutton_only_copy_prompt_lines = False
 # ---------------------------------------------------------------------------
 
 sphinx_gallery_conf = {
-    "doc_module": "py_amica",
+    "doc_module": "amica",
     "reference_url": {
-        "py_amica": None,
+        "amica": None,
     },
     "examples_dirs": str(REPO_ROOT / "examples"),
     "gallery_dirs": "auto_examples",
@@ -188,7 +188,7 @@ html_theme_options = {
         },
         {
             "name": "PyPI",
-            "url": "https://pypi.org/project/pyamica/",
+            "url": "https://pypi.org/project/amica/",
             "icon": "fa-brands fa-python",
         },
     ],

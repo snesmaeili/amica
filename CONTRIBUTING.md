@@ -1,6 +1,6 @@
-# Contributing to PyAMICA
+# Contributing to amica
 
-Thank you for your interest in contributing to **PyAMICA**!
+Thank you for your interest in contributing to **amica**!
 
 We welcome contributions of all kinds, including bug fixes, new features, documentation improvements, tests, benchmarks, and examples.
 
@@ -11,8 +11,8 @@ ______________________________________________________________________
 ## 1. Fork and Clone
 
 ```bash
-git clone https://github.com/<your-username>/PyAMICA.git
-cd PyAMICA
+git clone https://github.com/<your-username>/amica.git
+cd amica
 ```
 
 ## 2. Create a Virtual Environment
@@ -31,7 +31,7 @@ uv venv
 source .venv/bin/activate
 ```
 
-## 3. Install PyAMICA
+## 3. Install amica
 
 Using pip:
 
@@ -81,7 +81,7 @@ ______________________________________________________________________
 
 # Backend Testing
 
-PyAMICA supports multiple computational backends.
+amica supports multiple computational backends.
 
 ## NumPy
 
@@ -138,7 +138,7 @@ ______________________________________________________________________
 
 # Code Style
 
-PyAMICA uses:
+amica uses:
 
 - **Ruff** for linting and formatting
 - **pre-commit** for automated quality checks
@@ -192,7 +192,7 @@ ______________________________________________________________________
 
 # Benchmarks and Validation
 
-Contributions that compare PyAMICA against other ICA implementations are especially valuable, including:
+Contributions that compare amica against other ICA implementations are especially valuable, including:
 
 - MATLAB AMICA
 - Picard
