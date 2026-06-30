@@ -958,8 +958,10 @@ def _amica_step_multimodel_chunked(
 class AmicaResult:
     """Container for AMICA results.
 
-    Matrix naming convention
-    ------------------------
+    Notes
+    -----
+    **Matrix naming convention**
+
     AMICA operates in whitened space. Matrices are stored in both spaces
     with explicit suffixes to avoid ambiguity:
 
