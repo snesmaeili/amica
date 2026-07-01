@@ -1,6 +1,6 @@
-# Understanding PyAMICA
+# Understanding amica
 
-PyAMICA is a native Python implementation of **Adaptive Mixture Independent Component Analysis (AMICA)**, an ICA algorithm originally developed at the University of California, San Diego (UCSD) for blind source separation of EEG and other multichannel signals.
+amica is a native Python implementation of **Adaptive Mixture Independent Component Analysis (AMICA)**, an ICA algorithm originally developed at the University of California, San Diego (UCSD) for blind source separation of EEG and other multichannel signals.
 
 Unlike many ICA algorithms that assume a single statistical model for all sources, AMICA models each source using a **mixture of generalized Gaussian distributions** and can optionally fit **multiple ICA models** to account for non-stationary recordings.
 
@@ -56,9 +56,9 @@ These capabilities have made AMICA one of the strongest-performing ICA methods f
 
 ______________________________________________________________________
 
-## PyAMICA
+## amica
 
-PyAMICA brings AMICA into the modern scientific Python ecosystem.
+amica brings AMICA into the modern scientific Python ecosystem.
 
 It provides:
 
@@ -74,7 +74,7 @@ ______________________________________________________________________
 
 ## Choosing an interface
 
-PyAMICA provides two primary interfaces.
+amica provides two primary interfaces.
 
 ### MNE-Python interface
 
@@ -86,7 +86,7 @@ from amica import fit_ica
 
 This returns a standard `mne.preprocessing.ICA` object that integrates directly with existing MNE workflows.
 
-### Native PyAMICA interface
+### Native amica interface
 
 For NumPy arrays or custom pipelines, use:
 
@@ -100,7 +100,7 @@ ______________________________________________________________________
 
 ## Numerical validation
 
-PyAMICA has been validated against the original MATLAB AMICA implementation across a range of configurations.
+amica has been validated against the original MATLAB AMICA implementation across a range of configurations.
 
 The documentation includes validation experiments, reproducibility analyses, and performance benchmarks demonstrating numerical agreement between the two implementations.
 

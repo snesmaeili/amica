@@ -1,13 +1,13 @@
 # Examples
 
-PyAMICA provides examples covering the most common workflows, from fitting ICA on EEG recordings to using the core Python API directly.
+amica provides examples covering the most common workflows, from fitting ICA on EEG recordings to using the core Python API directly.
 
 ## Getting Started
 
-If you are new to PyAMICA, we recommend following the examples in this order:
+If you are new to amica, we recommend following the examples in this order:
 
 1. **MNE-Python integration** – fit AMICA on an EEG recording and obtain a standard `mne.preprocessing.ICA` object.
-1. **Native PyAMICA API** – fit AMICA directly on a NumPy array using the core `Amica` class.
+1. **Native amica API** – fit AMICA directly on a NumPy array using the core `Amica` class.
 1. **Validation example** – reproduce the numerical validation experiments on the MNE sample dataset.
 
 ______________________________________________________________________
@@ -31,8 +31,8 @@ ______________________________________________________________________
 Clone the repository and install the optional dependencies:
 
 ```bash
-git clone https://github.com/snesmaeili/PyAMICA.git
-cd PyAMICA
+git clone https://github.com/snesmaeili/amica.git
+cd amica
 
 pip install -e ".[all]"
 ```
@@ -61,7 +61,7 @@ ______________________________________________________________________
 
 The repository also includes additional examples that are not part of the online gallery:
 
-- Validation experiments comparing PyAMICA with the original MATLAB implementation.
+- Validation experiments comparing amica with the original MATLAB implementation.
 - HPC / Slurm templates for running AMICA on computing clusters.
 - Jupyter notebooks demonstrating complete EEG workflows.
 

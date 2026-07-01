@@ -1,8 +1,8 @@
-# PyAMICA
+# amica
 
 **Native Python AMICA for scientific EEG workflows.**
 
-PyAMICA provides an open Python implementation of **Adaptive Mixture Independent Component Analysis (AMICA)** with a modern scientific Python API, optional JAX acceleration, and MNE-Python integration.
+amica provides an open Python implementation of **Adaptive Mixture Independent Component Analysis (AMICA)** with a modern scientific Python API, optional JAX acceleration, and MNE-Python integration.
 
 ::::{grid} 1 1 2 2
 :gutter: 3
@@ -11,14 +11,14 @@ PyAMICA provides an open Python implementation of **Adaptive Mixture Independent
 :link: examples
 :link-type: doc
 
-Install PyAMICA, fit AMICA on MNE data, and run the core examples.
+Install amica, fit AMICA on MNE data, and run the core examples.
 :::
 
 :::{grid-item-card} Background
 :link: explanation
 :link-type: doc
 
-Understand AMICA, mixture ICA, optimization, and the design of PyAMICA.
+Understand AMICA, mixture ICA, optimization, and the design of amica.
 :::
 
 :::{grid-item-card} API Reference
@@ -36,7 +36,7 @@ Find troubleshooting notes for installation, JAX, MNE integration, and validatio
 :::
 ::::
 
-## Why PyAMICA?
+## Why amica?
 
 - Native Python implementation of AMICA
 - Optional JAX CPU/GPU acceleration
@@ -81,6 +81,6 @@ contributing
 
 ## Project Links
 
-- [GitHub repository](https://github.com/BabaSanfour/PyAMICA)
+- [GitHub repository](https://github.com/BabaSanfour/amica)
 - [PyPI package](https://pypi.org/project/amica/)
-- [Issue tracker](https://github.com/BabaSanfour/PyAMICA/issues)
+- [Issue tracker](https://github.com/BabaSanfour/amica/issues)

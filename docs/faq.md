@@ -2,15 +2,15 @@
 
 ## Which Python versions are supported?
 
-PyAMICA supports **Python 3.10 and newer**.
+amica supports **Python 3.10 and newer**.
 
 ______________________________________________________________________
 
-## Does PyAMICA require JAX?
+## Does amica require JAX?
 
 No.
 
-PyAMICA runs out of the box using the NumPy backend. Installing the `jax` extra enables hardware acceleration on supported systems.
+amica runs out of the box using the NumPy backend. Installing the `jax` extra enables hardware acceleration on supported systems.
 
 ```bash
 pip install "amica[jax]"
@@ -18,23 +18,23 @@ pip install "amica[jax]"
 
 ______________________________________________________________________
 
-## Does PyAMICA require a GPU?
+## Does amica require a GPU?
 
 No.
 
-The NumPy backend runs on any machine. If JAX with GPU support is installed, PyAMICA will automatically use the GPU.
+The NumPy backend runs on any machine. If JAX with GPU support is installed, amica will automatically use the GPU.
 
 ______________________________________________________________________
 
-## Can I use PyAMICA with MNE-Python?
+## Can I use amica with MNE-Python?
 
 Yes.
 
-PyAMICA provides a high-level `fit_ica` function that returns a standard `mne.preprocessing.ICA` object, allowing you to use the full MNE visualization and artifact-rejection workflow.
+amica provides a high-level `fit_ica` function that returns a standard `mne.preprocessing.ICA` object, allowing you to use the full MNE visualization and artifact-rejection workflow.
 
 ______________________________________________________________________
 
-## What input format does PyAMICA expect?
+## What input format does amica expect?
 
 The core API expects a NumPy array with shape
 
@@ -46,7 +46,7 @@ When using the MNE interface, simply pass an `mne.io.Raw` object.
 
 ______________________________________________________________________
 
-## Can PyAMICA fit multiple ICA models?
+## Can amica fit multiple ICA models?
 
 Yes.
 
@@ -54,11 +54,11 @@ AMICA supports fitting multiple ICA models (`num_models > 1`) to capture non-sta
 
 ______________________________________________________________________
 
-## How does PyAMICA compare with the original MATLAB AMICA?
+## How does amica compare with the original MATLAB AMICA?
 
-PyAMICA is designed to reproduce the original AMICA algorithm while providing a native Python implementation, optional JAX acceleration, and seamless integration with the scientific Python ecosystem.
+amica is designed to reproduce the original AMICA algorithm while providing a native Python implementation, optional JAX acceleration, and seamless integration with the scientific Python ecosystem.
 
-Validation experiments comparing PyAMICA with the original MATLAB implementation are available in the documentation.
+Validation experiments comparing amica with the original MATLAB implementation are available in the documentation.
 
 ______________________________________________________________________
 
@@ -77,13 +77,13 @@ ______________________________________________________________________
 
 Please open an issue on GitHub:
 
-**https://github.com/snesmaeili/PyAMICA/issues**
+**https://github.com/snesmaeili/amica/issues**
 
 When possible, include:
 
 - your operating system
 - Python version
-- PyAMICA version
+- amica version
 - backend (NumPy or JAX)
 - a minimal reproducible example
 
