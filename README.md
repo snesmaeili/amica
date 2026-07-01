@@ -1,6 +1,6 @@
 # amica
 
-[![CI](https://img.shields.io/github/actions/workflow/status/snesmaeili/amica/ci.yml?branch=main&label=CI)](https://github.com/snesmaeili/amica/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/snesmaeili/amica/tests.yml?branch=main&label=CI)](https://github.com/snesmaeili/amica/actions/workflows/tests.yml)
 [![Docs](https://img.shields.io/github/actions/workflow/status/snesmaeili/amica/docs.yml?branch=main&label=docs)](https://snesmaeili.github.io/amica/)
 [![Codecov](https://img.shields.io/codecov/c/github/snesmaeili/amica)](https://codecov.io/gh/snesmaeili/amica)
 [![PyPI - Version](https://img.shields.io/pypi/v/amica.svg)](https://pypi.org/project/amica/)
