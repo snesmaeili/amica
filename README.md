@@ -9,7 +9,7 @@
 
 > **amica** is a native Python implementation of **AMICA (Adaptive Mixture Independent Component Analysis)**, one of the highest-performing ICA algorithms for EEG source separation.
 
-Originally distributed as a closed-source Fortran executable from UCSD, amica provides an open, extensible implementation with optional **JAX acceleration**, seamless **MNE-Python integration**, and a modern Python API for reproducible neuroimaging workflows.
+Originally distributed as a closed-source Fortran executable from UCSD, this implementation of amica provides an open, extensible implementation with optional **JAX acceleration**, seamless **MNE-Python integration**, and a modern Python API for reproducible neuroimaging workflows.
 
 > **Status:** amica is under active development and validation. The implementation already achieves numerical agreement with the original MATLAB AMICA across a broad range of configurations, while documentation and benchmarking continue to expand.
 
