@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Check out pull request branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.head_ref }}
 
@@ -36,6 +36,6 @@ jobs:
           pre-commit run --all-files || true
 
       - name: Commit fixes
-        uses: stefanzweifel/git-auto-commit-action@v6
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "style: apply pre-commit autofixes"
